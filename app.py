@@ -22,12 +22,15 @@ st.set_page_config(
 CARPETA_FOTOS = "fotos_angel"
 
 # ==============================================================================
-# 2. MOTOR AUTO-EXTRACTOR DE LA BASE DE DATOS VISUAL (PDFs + ZIP + HEIC)
+# 2. MOTOR AUTO-EXTRACTOR DE LA BASE DE DATOS VISUAL (PDFs + FOTOS SUELTAS + HEIC)
 # ==============================================================================
 def buscar_pdf_en_repo(palabra_clave):
-    for f in os.listdir("."):
-        if f.lower().endswith(".pdf") and palabra_clave.lower() in f.lower():
-            return f
+    for raiz, _, archivos in os.walk("."):
+        if CARPETA_FOTOS in raiz or ".git" in raiz:
+            continue
+        for f in archivos:
+            if f.lower().endswith(".pdf") and palabra_clave.lower() in f.lower():
+                return os.path.join(raiz, f)
     return None
 
 def extraer_pagina_y_recortes(ruta_pdf, num_pagina_1based, nombre_salida, extraer_subimagenes=False, prefijo_sub=""):
@@ -73,7 +76,7 @@ def construir_base_datos_visual():
     extraer_pagina_y_recortes(pdf_dgz, 9, "03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg", True, "03_Recorte_DGZ_P9")
     extraer_pagina_y_recortes(pdf_dgz, 10, "04_Atache_DGZ_vs_Doble_Tip_Invisalign.jpg", True, "04_Recorte_DGZ_P10")
 
-    # 2. Cuaderno Angel Academy (ANGEL ACADEMY CUADERNO.pdf)
+    # 2. Cuaderno Angel Academy (ANGEL ACADEMY CUADERNO.pdf, original o comprimido)
     extraer_pagina_y_recortes(pdf_cuaderno, 2, "05_Notas_Tips_Trucos_Zamora_Vignolo.jpg")
     extraer_pagina_y_recortes(pdf_cuaderno, 17, "06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg", True, "06_Recorte_IRS")
     extraer_pagina_y_recortes(pdf_cuaderno, 21, "07_Material_Dual_MasterControl_S_Y_MC.jpg", True, "07_Recorte_Material")
@@ -114,24 +117,40 @@ def construir_base_datos_visual():
     extraer_pagina_y_recortes(pdf_brochure, 6, "36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg", True, "36_Recorte_SetupCIII")
     extraer_pagina_y_recortes(pdf_brochure, 7, "37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg")
 
-    # 6. Extraer fotos clínicas si el usuario sube un archivo .zip del curso
-    for f in os.listdir("."):
-        if f.lower().endswith(".zip"):
-            try:
-                with zipfile.ZipFile(f, "r") as z:
-                    for member in z.namelist():
-                        if "__MACOSX" in member or os.path.basename(member).startswith("._"):
-                            continue
-                        bname = os.path.basename(member)
-                        if bname.lower().endswith((".jpg", ".jpeg", ".png", ".heic")):
-                            nombre_limpio = os.path.splitext(bname)[0] + ".jpg"
-                            out_img_path = os.path.join(CARPETA_FOTOS, f"Curso_{nombre_limpio}")
-                            if not os.path.isfile(out_img_path):
-                                with z.open(member) as img_file:
-                                    im = Image.open(img_file).convert("RGB")
-                                    im.save(out_img_path, "JPEG", quality=90)
-            except Exception:
-                pass
+    # 6. Extraer fotos clínicas (tanto si están sueltas en el repo/subcarpetas como si están en .zip)
+    for raiz, _, archivos in os.walk("."):
+        if CARPETA_FOTOS in raiz or ".git" in raiz:
+            continue
+        for f in archivos:
+            ruta_completa = os.path.join(raiz, f)
+            # Si hay algún archivo .zip
+            if f.lower().endswith(".zip"):
+                try:
+                    with zipfile.ZipFile(ruta_completa, "r") as z:
+                        for member in z.namelist():
+                            if "__MACOSX" in member or os.path.basename(member).startswith("._"):
+                                continue
+                            bname = os.path.basename(member)
+                            if bname.lower().endswith((".jpg", ".jpeg", ".png", ".heic")):
+                                nombre_limpio = os.path.splitext(bname)[0] + ".jpg"
+                                out_img_path = os.path.join(CARPETA_FOTOS, f"Curso_{nombre_limpio}")
+                                if not os.path.isfile(out_img_path):
+                                    with z.open(member) as img_file:
+                                        im = Image.open(img_file).convert("RGB")
+                                        im.save(out_img_path, "JPEG", quality=90)
+                except Exception:
+                    pass
+            # Si son fotos sueltas (.jpg, .jpeg, .png, .heic) subidas directamente al repositorio
+            elif f.lower().endswith((".jpg", ".jpeg", ".png", ".heic")) and not f.startswith("._"):
+                try:
+                    nombre_limpio = os.path.splitext(f)[0] + ".jpg"
+                    prefijo = "" if nombre_limpio.startswith("Curso_") else "Curso_"
+                    out_img_path = os.path.join(CARPETA_FOTOS, f"{prefijo}{nombre_limpio}")
+                    if not os.path.isfile(out_img_path):
+                        im = Image.open(ruta_completa).convert("RGB")
+                        im.save(out_img_path, "JPEG", quality=90)
+                except Exception:
+                    pass
 
 construir_base_datos_visual()
 
@@ -165,7 +184,7 @@ if os.path.isdir(CARPETA_FOTOS):
 if archivos_graficos:
     st.sidebar.success(f"✅ {len(archivos_graficos)} láminas cargadas en la base de datos visual")
     foto_sel = st.sidebar.selectbox(
-        "Consultar lámina o esquema clínico:",
+        "Consultar lámina o foto clínica:",
         ["Selecciona una imagen..."] + archivos_graficos
     )
     if foto_sel != "Selecciona una imagen...":
@@ -176,8 +195,8 @@ if archivos_graficos:
         )
 else:
     st.sidebar.info(
-        "💡 Sube los PDFs (`pdf569.pdf`, `ANGEL ACADEMY CUADERNO.pdf`, `ANGEL1.pdf`, `ArticuloSAO_CII.pdf`) "
-        "a tu repositorio de GitHub para que la aplicación extraiga todas las fotos automáticamente."
+        "💡 Sube los PDFs y las fotos sueltas a tu repositorio de GitHub "
+        "para que la aplicación extraiga todas las láminas automáticamente."
     )
 
 if st.sidebar.button("🗑️ Limpiar memoria de consultas"):
@@ -186,14 +205,17 @@ if st.sidebar.button("🗑️ Limpiar memoria de consultas"):
     st.session_state.ultima_auditoria = ""
     st.rerun()
 
+lista_archivos_disponibles = ", ".join(archivos_graficos) if archivos_graficos else "Ninguna cargada aún"
+
 # ==============================================================================
 # 6. EL "LADRILLO" / FRAMEWORK BIOMECÁNICO COMPLETO DE ANGEL ALIGNER
 # ==============================================================================
-FRAMEWORK_ANGEL_ALIGNER = """
+FRAMEWORK_ANGEL_ALIGNER = f"""
 Actúa como un Ortodoncista Senior y Director Clínico experto en el sistema Angel Aligner (plataforma iOrtho), entrenado estrictamente con los protocolos clínicos, artículos científicos y anotaciones de los Dres. David González Zamora y Romina Vignolo Lobato (Angel Academy).
 
 REGLA CRÍTICA SOBRE DOCUMENTOS GRÁFICOS Y FOTOS DE REFERENCIA:
-Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de corte, una herramienta de iOrtho o un protocolo clínico, DEBES escribir entre paréntesis el nombre exacto del archivo `.jpg` de esta lista para que la aplicación muestre automáticamente la imagen en pantalla:
+Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. Archivos actualmente disponibles en la biblioteca: [{lista_archivos_disponibles}].
+SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de corte, una herramienta de iOrtho o un protocolo clínico, DEBES escribir entre paréntesis el nombre exacto del archivo `.jpg` de esta lista para que la aplicación muestre automáticamente la imagen en pantalla:
 - `01_Atache_DGZ_Geometria_Vectores.jpg` y `01_Recorte_DGZ_P4_Fig1.jpg`: Geometría del Atache DGZ (Double Gripping Zag) con lóbulo gingival (M) y lóbulo incisal (S) y vectores de fuerza F1 y F2 a ambos lados del centro de resistencia.
 - `02_Atache_DGZ_Cierre_Diastema_MARPE.jpg`: Planificación en iOrtho y evolución clínica intraoral del cierre de diastema post-MARPE con Atache DGZ.
 - `03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg`: Setup 3D del Atache DGZ para control de tip en caninos, premolares y enderezamiento molar.
@@ -221,6 +243,7 @@ Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. SIEMPRE 
 - `31_Catalogo_Visual_AngelAttach.jpg` y `32_Catalogo_Visual_Areas_Presion_Y_Auxiliares.jpg`: Catálogo visual de todos los ataches, áreas de presión, pónticos, power-arm y guías de erupción.
 - `33_Comparativa_Bloques_A6_Rectos_vs_Inclinados.jpg`, `34_Curva_Crecimiento_Y_5_Pasos_Clase_II.jpg` y `35_Opciones_Elasticos_Clase_II_Con_A6.jpg`: Figuras del artículo científico de Clase II (bloques rectos vs inclinados, curva de crecimiento y elásticos).
 - `36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg` y `37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg`: Caso clínico de Clase III tratado en 39 alineadores Pro con protocolo A8.
+- Fotos clínicas adicionales del curso: `Curso_IMG_1623_Original.jpg`, `Curso_IMG_1624_Original.jpg`, `Curso_IMG_1631_Original.jpg`, `Curso_IMG_1640_Original.jpg`, `Curso_IMG_1645_Original.jpg`, `Curso_IMG_1656_Original.jpg`, `Curso_IMG_1678_Original.jpg`, `Curso_IMG_1688_Original.jpg`, `Curso_IMG_1689_Original.jpg`, `Curso_IMG_1702_Original.jpg`, `Curso_IMG_1711_Original.jpg`, `Curso_IMG_2589.jpg`, `Curso_IMG_2602.jpg`, `Curso_IMG_2914.jpg`.
 
 ====================================================================
 1. PORFOLIO DE PRODUCTOS, MATERIALES Y RITMO CLÍNICO
@@ -275,7 +298,7 @@ B) REGLAS DE LOS DEMÁS ATACHES CONVENCIONALES (`11_Tabla_1_Ataches_Convencional
   * Si se coloca en el **CENTRO de la corona clínica** = sirve para dar **TORQUE a los incisivos** (combinado con *torque ridge* / área de presión de torque y línea de corte alta en casos de sobremordida).
   * Puede convivir en la misma cara con puntos/áreas de presión dejando **1 mm de distancia**.
 - **Atache de Rotación + Extrusión (Caninos y Premolares):** Secuenciar haciendo **primero la rotación y luego la extrusión**, colocando atache de rotación por vestibular y atache de retención por palatino.
-- **Atache de Retención (Caninos, Premolares y Molars):**
+- **Atache de Retención (Caninos, Premolares y Molares):**
   * Imprescindible en expansiones y en dientes de anclaje cuando queremos intruir dientes vecinos (ej. **para intruir 11 y 21, colocar ataches de retención en 12 y 13**).
   * En incisivos inferiores estrechos, el atache convencional de retención también funciona muy bien para extrusión si el paciente colabora.
   * En niños pequeños (dentición temporal/mixta), poner **ataches grandes ("ladrillos")** porque muerden el alineador al ponérselo y los dientes temporales son expulsivos.
@@ -318,4 +341,316 @@ B) PROTOCOLO A6 (AVANCE MANDIBULAR) (`20_Protocolo_A6_Reglas_Avance_Mandibular.j
 - **Diseño del bloque:** Pedir **SIEMPRE BLOQUES RECTOS (Tipo I)**; prohibido usar los bloques inclinados (Tipo II) porque intruyen los molares y el paciente muerde con el borde generando mordida abierta posterior.
 - **Ubicación del bloque:** En dentición mixta colocar los bloques **lo más posterior posible cubriendo como mínimo el primer molar inferior definitivo** (para evitar el efecto intrusivo de combate sobre el molar y permitir intruir el incisivo); en dentición permanente colocarlos más a nivel anterior.
 - **Magnitud del avance:** Nunca hacer micro-avances incrementales; el salto debe ser completo (mínimo **4 mm** para separar el cóndilo de la cavidad glenoidea y máximo **7 mm**; si requiere más en niños muy pequeños, dividir en solo 2 saltos). Criterio de mordida constructiva: apertura vertical de 4–6 mm en premolares, 1–2 mm en anterior y sobrecorrección de 2–3 mm.
--
+- **Material y cambio:** El avance mandibular A6 utiliza siempre material flexible con dos juegos por etapa (**5 días + 5 días**).
+- **Ataches y Elásticos en A6:** Colocar ataches de retención en todos los dientes posteriores para aplanar la curva de Spee y biselados en incisivos. Acompañar siempre los bloques con **AngelButtons y elásticos de Clase II** (1/4" 4.5 oz para estabilización general, o elástico suave nocturno/tarde para guiar muscularmente la mandíbula hacia adelante).
+- **Fase II de consolidación (mínimo 9 meses totales):** Tras la Fase I con bloques A6, pasar a Fase II con **levante anterior inclinado** y elásticos nocturnos para consolidar el cambio muscular en remodelado esquelético.
+
+C) TRANSVERSAL, MORDIDAS CRUZADAS Y ASIMETRÍAS (`24_Protocolo_Angel_Kid_Notas_Romina.jpg`):
+- **Mordida cruzada unilateral:** Hacer primero **expansión unilateral del lado de la mordida cruzada** hasta simetrizar con el lado sano (indicando al paciente que mastique por el lado contrario al que masticaba, necesitando ~2 años para remodelar la trayectoria condílea), y en una segunda etapa hacer la **expansión bilateral simétrica** buscando una **arcada cuadrada** en niños que permita frote bilateral.
+- **Salto virtual vertical:** Nivelar el plano oclusal superior y el plano inferior de forma independiente y pedir al técnico un **salto virtual vertical** para que la mandíbula anterorrote sola sin extruir dientes artificialmente.
+
+D) CLASE III CON ANGEL ALIGNER PRO Y PROTOCOLO A8 (`36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg`, `37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg`):
+- En adultos jóvenes con Clase III dentoalveolar/esquelética compensable: usar **Angel Aligner Pro (7+3)** con **Protocolo A8 de distalización inferior** en cuadrantes 3 y 4, intrusión anteroinferior para nivelar curva de Spee, control radicular/torque de caninos inferiores (33 y 43) dentro de la cortical con IRS (CBCT), IPR anterior según Bolton y **elásticos de Clase III (3/16", 4.5 oz) conectados a AngelButtons**.
+
+====================================================================
+5. REGLAS DE AUDITORÍA DE CAPTURAS DE iORTHO (TABLA TM, BOLTON, OB/OJ, ARCADA, MovE)
+====================================================================
+Al auditar las capturas de pantalla de iOrtho subidas por el doctor:
+1) **Bolton:** Identificar si el exceso (ej. 3-3 o 6-6) se debe a ausencias dentarias (`—` en la tabla M-D, como falta del 42, 17, 37) o desproporción anatómica, y proponer cómo compensarlo (IPR, reconstrucción o cierre con Atache DGZ).
+2) **Gráfico MovE (Secuenciación):** Verificar número de etapas activas, ausencias (`X`), cementado de ataches (puntos rojos) y etapas de IPR (rombos azules). Si todos los dientes se mueven en bloque de la etapa 1 a la final en un adulto, exigir secuenciación (ej. patrón en V en distalizaciones o desrotar/expandir antes de retruir) y **adelantar el IPR a las primeras etapas (etapa 1 o 7)**.
+3) **Tabla TM (Corona, Centro de resistencia y Ápice radicular):**
+   - Detectar todas las celdas marcadas en amarillo/rojo Y las celdas en blanco que superen límites predecibles:
+     * **Rotaciones >15° en caninos/premolares o >20° en incisivos:** exigir atache de rotación (o rotación + retención vestibular y retención palatina), área de presión de rotación (en incisivos/caninos entre 12° y 25° respetando velocidad máx 2.2°/etapa en Pro o 1.8°/etapa en Select) y abrir espacio previo.
+     * **Tip / Angulación >4-5° o cierre de espacios de extracción/agenesia:** exigir **Atache DGZ (talla M en gingival y S en incisal)**.
+     * **Torque >8-10° (`La`/`Li`):** exigir área de presión de torque (*torque ridge*) + atache HBO en el centro de la corona + línea de corte alta a 2.5 mm.
+     * **Intrusión >1.0 - 2.5 mm:** exigir ataches de retención en dientes vecinos (ej. en 12 y 13 para intruir 11 y 21) y área de presión de intrusión si supera 2.5 mm.
+4) **Anchura de la Arcada (`3-3`, `4-4`, `5-5`, `6-6`):** Alertar si hay estrechamiento/colapso severo de la distancia intercanina (`3-3` muy negativo, ej. `-4.3 mm`) o compresión posterior.
+5) **OB/OJ (Sobremordida y Resalte):** Si la sobremordida (OB) objetivo sube cerca de `3.0 mm` al retruir o cerrar espacios, alertar del riesgo de mordida profunda secundaria y pedir **levantes de mordida anteriores adaptativos de 3 a 3** y sobrecorrección vertical.
+"""
+
+# 7. Inicializar el modelo Gemini
+modelo = genai.GenerativeModel(
+    model_name="gemini-flash-lite-latest",
+    system_instruction=FRAMEWORK_ANGEL_ALIGNER
+)
+
+# 8. Interfaz Principal
+st.title("🦷 Asistente Clínico de Ortodoncia — Angel Aligner (iOrtho)")
+st.markdown(
+    "Sistema de **Prescripción Inicial**, **Auditoría del Setup 3D (Tabla TM / Bolton / OB-OJ)** y **Base de Datos Gráfica** "
+    "basado en los protocolos de los Dres. **David González Zamora y Romina Vignolo Lobato**."
+)
+
+if "chat_angel" not in st.session_state:
+    st.session_state.chat_angel = []
+if "ultima_prescripcion" not in st.session_state:
+    st.session_state.ultima_prescripcion = ""
+if "ultima_auditoria" not in st.session_state:
+    st.session_state.ultima_auditoria = ""
+
+tab_diag, tab_setup, tab_chat = st.tabs([
+    "📋 Fase 1: Diagnóstico y Prescripción Inicial",
+    "🔍 Fase 2: Auditoría del 1er Setup (Capturas iOrtho / Tabla TM)",
+    "💬 Fase 3: Chat Clínico y Buscador Visual (Atache DGZ, Tablas, Protocolos)"
+])
+
+# ==============================================================================
+# PESTAÑA 1: DIAGNÓSTICO Y PRESCRIPCIÓN INICIAL
+# ==============================================================================
+with tab_diag:
+    st.subheader("📋 Formulario de Diagnóstico Clínico Inicial")
+    st.caption("Introduce los datos clínicos del paciente para generar la prescripción inicial exacta para iOrtho.")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("#### 1. Paciente y Biotipo")
+        tipo_paciente = st.selectbox(
+            "Grupo de edad / Dentición",
+            [
+                "Adulto (Dentición permanente)",
+                "Adolescente (Dentición permanente joven)",
+                "Niño con algún diente de leche - Candidato a Angel KiD (K1)",
+                "Niño en Crecimiento - Dentición Mixta (Pico 5-7 años / C1-C2)",
+                "Niño Pequeño - Dentición Temporal (<6 años)"
+            ]
+        )
+        biotipo = st.selectbox(
+            "Biotipo Facial",
+            ["Mesofacial", "Braquifacial (Tendencia a sobremordida)", "Dolicofacial (Tendencia a mordida abierta)"]
+        )
+        estado_periodontal = st.selectbox(
+            "Estado Periodontal y Colaboración",
+            [
+                "Periodonto sano / Buena colaboración (Apto para Pro 7+3)",
+                "Paciente Periodontal / Recesiones (NO usar Pro, usar Select)",
+                "Colaboración dudosa con elásticos",
+                "Niño pequeño (requiere ataches grandes por inserción)"
+            ]
+        )
+        habitos_atm = st.multiselect(
+            "Hábitos, Lengua, Postura y ATM",
+            [
+                "Sin alteraciones",
+                "Respirador oral / Cornetes hipertróficos",
+                "Lengua baja (Candidato a Posicionador Lingual)",
+                "Interposición lingual / Succión digital (Candidato a Corrector de hábitos / Tongue Crib)",
+                "Duerme boca abajo / apoya mano-hombro en cara",
+                "Masticación unilateral predominante",
+                "Disfunción ATM / Canteo oclusal"
+            ],
+            default=["Sin alteraciones"]
+        )
+
+    with col2:
+        st.markdown("#### 2. Plano Sagital y Líneas Medias")
+        c_molar_d = st.selectbox("Clase Molar Derecha", ["Clase I", "Clase II incompleta (1/2 cúspide)", "Clase II completa", "Clase III incompleta", "Clase III completa"])
+        c_molar_i = st.selectbox("Clase Molar Izquierda", ["Clase I", "Clase II incompleta (1/2 cúspide)", "Clase II completa", "Clase III incompleta", "Clase III completa"])
+        c_canina_d = st.selectbox("Clase Canina Derecha", ["Clase I", "Clase II incompleta", "Clase II completa", "Clase III incompleta", "Clase III completa"])
+        c_canina_i = st.selectbox("Clase Canina Izquierda", ["Clase I", "Clase II incompleta", "Clase II completa", "Clase III incompleta", "Clase III completa"])
+        origen_sagital = st.selectbox(
+            "Etiología Sagital Principal",
+            [
+                "Dentoalveolar (candidato a Protocolo A8 de distalización)",
+                "Retrusión mandibular en crecimiento (candidato a Protocolo A6 bloques rectos)",
+                "Clase II con resalte < 3 mm (candidato a Levantes anteriores inclinados)",
+                "Hipoplasia maxilar Clase III en crecimiento (candidato a Angel Hook / AngelButtons + Máscara)",
+                "Casos de Extracción de Premolares (Protocolo A7)"
+            ]
+        )
+        resalte_oj = st.number_input("Resalte / Overjet inicial (mm)", min_value=-10.0, max_value=20.0, value=2.5, step=0.5)
+        lm_sup = st.selectbox("Línea Media Superior respecto a Facial", ["Centrada", "Desviada a la Derecha (1-2 mm)", "Desviada a la Derecha (>2 mm)", "Desviada a la Izquierda (1-2 mm)", "Desviada a la Izquierda (>2 mm)"])
+        lm_inf = st.selectbox("Línea Media Inferior respecto a Superior", ["Centrada", "Desviada a la Derecha (1-2 mm)", "Desviada a la Derecha (>2 mm)", "Desviada a la Izquierda (1-2 mm)", "Desviada a la Izquierda (>2 mm)"])
+
+    with col3:
+        st.markdown("#### 3. Plano Vertical, Transversal y Espacio")
+        sobremordida_ob = st.number_input("Sobremordida / Overbite inicial (mm)", min_value=-10.0, max_value=12.0, value=2.5, step=0.5)
+        problema_vertical = st.selectbox(
+            "Situación Vertical y Curva de Spee",
+            [
+                "Normal (1.5 - 2.5 mm)",
+                "Sobremordida aumentada / Curva de Spee marcada (Levantes anteriores de 3 a 3)",
+                "Intrusión incisiva > 2.5 mm necesaria (Área de presión de intrusión)",
+                "Mordida borde a borde (0 mm)",
+                "Mordida abierta anterior (Levantes posteriores / Bite bubbles)",
+                "Canteo del plano oclusal (Valorar TADs con cabeza de botón)"
+            ]
+        )
+        problema_transversal = st.selectbox(
+            "Situación Transversal",
+            [
+                "Arcadas simétricas y bien coordinadas",
+                "Compresión bilateral simétrica (Expansión simétrica / Arcada cuadrada en niños)",
+                "Mordida cruzada posterior UNILATERAL DERECHA (Expandir lado derecho primero)",
+                "Mordida cruzada posterior UNILATERAL IZQUIERDA (Expandir lado izquierdo primero)",
+                "Mordida cruzada posterior BILATERAL",
+                "Mordida en tijera (Brodie)"
+            ]
+        )
+        apinamiento_sup = st.selectbox("Espacio Arcada Superior", ["Sin apiñamiento", "Apiñamiento leve (<=2 mm)", "Apiñamiento moderado (3-5 mm)", "Apiñamiento severo (6-10 mm)", "Diastemas / Cierre post-MARPE (Atache DGZ)"])
+        apinamiento_inf = st.selectbox("Espacio Arcada Inferior", ["Sin apiñamiento", "Apiñamiento leve (<=2 mm)", "Apiñamiento moderado (3-5 mm)", "Apiñamiento severo (6-10 mm)", "Diastemas / Espacios"])
+        incisivos_inclinacion = st.selectbox("Inclinación de Incisivos (Torque inicial)", ["Normoinclinados", "Proinclinados superior e inferior", "Retroinclinados (requiere HBO central + Torque Ridge + Corte alto)", "Superior proinclinado / Inferior retroinclinado", "Superior retroinclinado / Inferior proinclinado (Compensación CIII)"])
+
+    notas_clinicas_ini = st.text_area(
+        "Notas adicionales del caso (ausencias, caninos incluidos, erupción de incisivos/7s, asimetrías):",
+        placeholder="Ej: Ausencia del 42, caninos inferiores con tip mesial, o niño con incisivos en erupción..."
+    )
+
+    if st.button("🚀 Generar Prescripción Inicial y Esquemas Visuales", type="primary"):
+        prompt_fase1 = f"""
+Genera la PLANIFICACIÓN BIOMECÁNICA Y PRESCRIPCIÓN INICIAL COMPLETA para enviar este caso a Angel Aligner (iOrtho), aplicando los protocolos de los Dres. David González Zamora y Romina Vignolo:
+
+DATOS DIAGNÓSTICOS DEL PACIENTE:
+- Edad / Dentición: {tipo_paciente}
+- Biotipo facial: {biotipo} | Estado Periodontal/Colaboración: {estado_periodontal}
+- Hábitos, Lengua y ATM: {', '.join(habitos_atm)}
+- Clase Molar: Derecha = {c_molar_d} | Izquierda = {c_molar_i}
+- Clase Canina: Derecha = {c_canina_d} | Izquierda = {c_canina_i}
+- Etiología sagital: {origen_sagital} | Resalte (Overjet) inicial: {resalte_oj} mm
+- Línea Media Superior: {lm_sup} | Línea Media Inferior: {lm_inf}
+- Sobremordida (Overbite) inicial: {sobremordida_ob} mm ({problema_vertical})
+- Situación Transversal: {problema_transversal}
+- Espacio Superior: {apinamiento_sup} | Espacio Inferior: {apinamiento_inf}
+- Inclinación incisiva inicial: {incisivos_inclinacion}
+- Notas clínicas adicionales: {notas_clinicas_ini if notas_clinicas_ini else 'Ninguna'}
+
+Estructura tu respuesta en estos 6 apartados:
+1. **Producto Angel Aligner y Línea de Corte exacta:** (Elige entre Select 10/20/30/Unlimited, Pro 7+3 [recuerda no usar Pro en periodontales], o KiD K1/K2, y define la Línea de Corte: Festoneada, Recta alta a 2.5 mm o Mixta si están erupcionando incisivos).
+2. **Estrategia Transversal y Forma de Arcada:** (Expansión unilateral del lado cruzado primero vs bilateral, arcada cuadrada en niños, espacio de primate de 0.5 mm en caninos temporales).
+3. **Estrategia Sagital (Protocolos A6, A7 o A8):** (Los 5 pasos de Clase II, distalización secuencial A8 vs simultánea en niños, o Bloques A6 rectos 5+5 días cubriendo el 6 inferior con elásticos 1/4" 4.5 oz, o Angel Hook / AngelButtons en Clase III).
+4. **Estrategia Vertical y Funcional:** (Levantes de mordida anteriores adaptativos de 3 a 3, inclinados si OJ<3mm, o posteriores sin cementar; aditamentos linguales en KiD; compensador de erupción en 7s o barras en caninos incluidos).
+5. **Diseño de Ataches (incluyendo Atache DGZ), Áreas de Presión y Elásticos:** (Dónde colocar Atache DGZ M-gingival/S-incisal, HBO incisal para extrusión vs HBO en el centro + Torque Ridge para torque, ataches de retención en vecinos para intrusión o en 7 y 5 si hay botón directo en el 6, y elásticos diagonales/clase II/III).
+6. **📝 TEXTO EXACTO PARA COPIAR Y PEGAR EN LA PRESCRIPCIÓN AL TÉCNICO DE iORTHO.**
+Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la biblioteca gráfica para que se muestren debajo de tu respuesta.
+"""
+        with st.spinner("Generando prescripción clínica y cargando esquemas gráficos..."):
+            try:
+                respuesta_ini = modelo.generate_content(prompt_fase1)
+                st.session_state.ultima_prescripcion = respuesta_ini.text
+            except Exception as e:
+                st.error(f"Detalle del error de conexión con Google Gemini: {e}")
+
+    if st.session_state.ultima_prescripcion:
+        st.markdown("---")
+        st.markdown("### ✅ Prescripción Inicial y Plan Biomecánico")
+        st.markdown(st.session_state.ultima_prescripcion)
+        mostrar_fotos_referencia(st.session_state.ultima_prescripcion)
+
+# ==============================================================================
+# PESTAÑA 2: AUDITORÍA DEL 1er SETUP (CAPTURAS iORTHO / TABLA TM / BOLTON / OB-OJ)
+# ==============================================================================
+with tab_setup:
+    st.subheader("🔍 Auditoría Inteligente de la 1ª Propuesta de iOrtho (Setup 3D)")
+    st.markdown(
+        "Sube las **capturas de pantalla o fotos de tu monitor en iOrtho** "
+        "(**Tabla TM**, **Bolton**, **Anchura de la arcada**, **OB/OJ** y **MovE**). "
+        "La IA leerá cada celda y la cruzará con el 'ladrillo' de Angel Aligner."
+    )
+
+    capturas_iortho = st.file_uploader(
+        "📸 Arrastra aquí tus capturas de iOrtho (puedes seleccionar las 6 imágenes a la vez):",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True
+    )
+
+    imagenes_pil = []
+    if capturas_iortho:
+        cols_img = st.columns(min(len(capturas_iortho), 3))
+        for i, archivo in enumerate(capturas_iortho):
+            img_pil = Image.open(archivo)
+            imagenes_pil.append(img_pil)
+            with cols_img[i % 3]:
+                st.image(img_pil, caption=archivo.name, use_container_width=True)
+
+    observaciones_setup = st.text_area(
+        "Observaciones adicionales sobre el Setup (opcional):",
+        placeholder="Ej: Paciente adulto con ausencia del 42. Revisar rotaciones de caninos, colapso del 3-3 inferior y tiempos de IPR..."
+    )
+
+    incluir_diag_previo = st.checkbox(
+        "Cruzar esta auditoría con el diagnóstico seleccionado en la Pestaña 1",
+        value=True
+    )
+
+    if st.button("🔬 Auditar Capturas de iOrtho y Generar Modificaciones para el Técnico", type="primary"):
+        contexto_diag = ""
+        if incluir_diag_previo:
+            contexto_diag = f"""
+CONTEXTO DIAGNÓSTICO DEL PACIENTE (PESTAÑA 1):
+- Edad/Dentición: {tipo_paciente} | Biotipo: {biotipo} | Periodonto: {estado_periodontal}
+- Clase Molar D: {c_molar_d} | I: {c_molar_i} | Clase Canina D: {c_canina_d} | I: {c_canina_i}
+- Resalte inicial: {resalte_oj} mm | Sobremordida inicial: {sobremordida_ob} mm ({problema_vertical})
+- Transversal: {problema_transversal} | Notas: {notas_clinicas_ini}
+"""
+        prompt_fase2 = f"""
+Actúa como auditor clínico experto en Angel Aligner (iOrtho). Analiza todas las cifras de las capturas adjuntas de iOrtho (Tabla TM de movimientos dentales, Análisis de Bolton, Anchura de la arcada, OB/OJ y gráfico MovE) junto con las notas del doctor.
+
+{contexto_diag}
+OBSERVACIONES DEL DOCTOR:
+{observaciones_setup if observaciones_setup else 'Auditar todas las imágenes de iOrtho adjuntas.'}
+
+Estructura tu auditoría en estos 6 bloques:
+1. **Resumen de Datos Leídos en las Capturas de iOrtho:** (Bolton 3-3 y 6-6, ausencias dentarias detectadas con `—` o `X`, número de alineadores en MovE, etapas donde han puesto los rombos de IPR, Anchura 3-3/4-4/5-5/6-6 y OB/OJ inicial vs objetivo).
+2. **Auditoría Diente por Diente de la Tabla TM (Alertas Amarillas y Riesgos Ocultos en Blanco):**
+   - Lista con sus valores exactos los dientes que superen límites biomecánicos en Rotación (>12-15°), Torque (>8-10°), Tip/Angulación (>4°), Traslación V-L o M-D, y Extrusión/Intrusión.
+3. **Análisis del Gráfico `MovE` (Secuenciación y Citas cada 6 alineadores):**
+   - Evalúa si todos los dientes se mueven a la vez sin secuenciar y si los rombos de IPR están mal ubicados (recuerda la regla de David de programar el IPR al inicio o en las citas de los alineadores 7, 13, 19...).
+4. **Análisis de Anchura de Arcada, Bolton y Sobremordida (OB/OJ):**
+   - Alerta si hay colapso intercanino (`3-3` negativo) o aumento excesivo del Overbite final (~3 mm).
+5. **Soluciones Biomecánicas Angel Aligner (Atache DGZ, HBO, Áreas de Presión, Levantes):**
+   - Indica exactamente dónde colocar el **Atache DGZ** (talla M gingival y S incisal, recordando no ponerlo en incisivos inferiores sino en caninos/premolares/incisivos superiores), dónde poner **áreas de presión de rotación** (12-25°), **áreas de presión de torque + HBO en el centro de la corona**, o **ataches de rotación por vestibular + retención por palatino**.
+6. **📝 TEXTO NUMERADO LISTO PARA COPIAR Y PEGAR AL TÉCNICO CAD DE iORTHO.**
+Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la biblioteca gráfica (como `01_Atache_DGZ_Geometria_Vectores.jpg`, `11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg`, `13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg`, etc.) para mostrar las referencias visuales.
+"""
+        with st.spinner("Leyendo capturas de iOrtho y auditando biomecánica diente por diente..."):
+            try:
+                contenido_envio = [prompt_fase2]
+                if imagenes_pil:
+                    contenido_envio.extend(imagenes_pil)
+                respuesta_aud = modelo.generate_content(contenido_envio)
+                st.session_state.ultima_auditoria = respuesta_aud.text
+            except Exception as e:
+                st.error(f"Detalle del error de conexión con Google Gemini: {e}")
+
+    if st.session_state.ultima_auditoria:
+        st.markdown("---")
+        st.markdown("### 🔬 Informe de Auditoría Biomecánica y Modificaciones para iOrtho")
+        st.markdown(st.session_state.ultima_auditoria)
+        mostrar_fotos_referencia(st.session_state.ultima_auditoria)
+
+# ==============================================================================
+# PESTAÑA 3: CHAT CLÍNICO Y BUSCADOR DE REFERENCIAS VISUALES
+# ==============================================================================
+with tab_chat:
+    st.subheader("💬 Chat Clínico y Buscador Visual del 'Ladrillo' Angel Aligner")
+    st.caption(
+        "Pregúntale por cualquier protocolo o pídele ver una referencia gráfica "
+        "(ej. 'Enséñame la imagen de la forma y vectores del atache DGZ', 'Muéstrame la tabla de áreas de presión' o '¿Cómo configuro un avance mandibular A6?')."
+    )
+
+    for msg in st.session_state.chat_angel:
+        with st.chat_message(msg["rol"]):
+            st.markdown(msg["texto"])
+            if msg["rol"] == "assistant":
+                mostrar_fotos_referencia(msg["texto"])
+
+    pregunta_chat = st.chat_input("Ej: Muéstrame la imagen del atache DGZ y explícame cómo pedirlo...")
+
+    if pregunta_chat:
+        st.session_state.chat_angel.append({"rol": "user", "texto": pregunta_chat})
+        with st.chat_message("user"):
+            st.markdown(pregunta_chat)
+
+        with st.chat_message("assistant"):
+            try:
+                historial_api = [
+                    {"role": "user" if m["rol"] == "user" else "model", "parts": [m["texto"]]}
+                    for m in st.session_state.chat_angel[:-1]
+                ]
+                chat = modelo.start_chat(history=historial_api)
+                resp = chat.send_message(pregunta_chat)
+                st.markdown(resp.text)
+                mostrar_fotos_referencia(resp.text)
+                st.session_state.chat_angel.append({"rol": "assistant", "texto": resp.text})
+            except Exception as e:
+                st.error(f"Detalle del error de conexión con Google Gemini: {e}")
