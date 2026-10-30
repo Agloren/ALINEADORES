@@ -22,7 +22,7 @@ st.set_page_config(
 CARPETA_FOTOS = "fotos_angel"
 
 # ==============================================================================
-# 2. MOTOR AUTO-EXTRACTOR DE LA BASE DE DATOS VISUAL (PDFs + FOTOS SUELTAS + HEIC)
+# 2. MOTOR AUTO-EXTRACTOR DE LA BASE DE DATOS VISUAL (PDF 40 PÁGS + CARPETA FOTOS)
 # ==============================================================================
 def buscar_pdf_en_repo(palabra_clave):
     for raiz, _, archivos in os.walk("."):
@@ -33,6 +33,11 @@ def buscar_pdf_en_repo(palabra_clave):
                 return os.path.join(raiz, f)
     return None
 
+def limpiar_nombre_archivo(nombre_base):
+    limpio = re.sub(r"[^A-Za-z0-9_]", "_", nombre_base)
+    limpio = re.sub(r"_+", "_", limpio).strip("_")
+    return limpio
+
 def extraer_pagina_y_recortes(ruta_pdf, num_pagina_1based, nombre_salida, extraer_subimagenes=False, prefijo_sub=""):
     if not ruta_pdf or not os.path.isfile(ruta_pdf):
         return
@@ -42,7 +47,7 @@ def extraer_pagina_y_recortes(ruta_pdf, num_pagina_1based, nombre_salida, extrae
         if 1 <= num_pagina_1based <= len(doc):
             page = doc.load_page(num_pagina_1based - 1)
             if not os.path.isfile(ruta_destino):
-                pix = page.get_pixmap(dpi=200)
+                pix = page.get_pixmap(dpi=180)
                 pix.save(ruta_destino)
             if extraer_subimagenes:
                 img_list = page.get_images(full=True)
@@ -70,36 +75,76 @@ def construir_base_datos_visual():
     pdf_sao = buscar_pdf_en_repo("ArticuloSAO")
     pdf_brochure = buscar_pdf_en_repo("Brochure")
 
-    # 1. Artículo del Atache DGZ (pdf569.pdf) - Extrae láminas y recortes de las figuras
+    # 1. Artículo del Atache DGZ (pdf569.pdf - 11 páginas)
     extraer_pagina_y_recortes(pdf_dgz, 4, "01_Atache_DGZ_Geometria_Vectores.jpg", True, "01_Recorte_DGZ_P4")
     extraer_pagina_y_recortes(pdf_dgz, 8, "02_Atache_DGZ_Cierre_Diastema_MARPE.jpg", True, "02_Recorte_DGZ_P8")
     extraer_pagina_y_recortes(pdf_dgz, 9, "03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg", True, "03_Recorte_DGZ_P9")
     extraer_pagina_y_recortes(pdf_dgz, 10, "04_Atache_DGZ_vs_Doble_Tip_Invisalign.jpg", True, "04_Recorte_DGZ_P10")
 
-    # 2. Cuaderno Angel Academy (ANGEL ACADEMY CUADERNO.pdf, original o comprimido)
-    extraer_pagina_y_recortes(pdf_cuaderno, 2, "05_Notas_Tips_Trucos_Zamora_Vignolo.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 17, "06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg", True, "06_Recorte_IRS")
-    extraer_pagina_y_recortes(pdf_cuaderno, 21, "07_Material_Dual_MasterControl_S_Y_MC.jpg", True, "07_Recorte_Material")
-    extraer_pagina_y_recortes(pdf_cuaderno, 24, "08_Caso_Intraoral_AngelButton_Y_TADs.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 27, "09_Lineas_De_Corte_Variable_3_Tipos.jpg", True, "09_Recorte_Corte")
-    extraer_pagina_y_recortes(pdf_cuaderno, 28, "10_Esquema_3D_Ataches_Y_Areas_Presion.jpg", True, "10_Recorte_3D")
-    extraer_pagina_y_recortes(pdf_cuaderno, 29, "11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 30, "12_Tabla_2_Ataches_De_Precision.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 31, "13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 32, "14_Tabla_4_Recortes_Elasticos_Boton_Bracket.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 33, "15_Tabla_5_Levantes_De_Mordida_Bite_Turbos.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 34, "16_Detalle_Clinico_AngelButton_TAD.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 35, "17_Detalle_Perfil_AngelButton_TPU.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 36, "18_Figura_4_Aplicaciones_AngelButton_360.jpg", True, "18_Recorte_AngelButton")
-    extraer_pagina_y_recortes(pdf_cuaderno, 37, "19_Figura_5_Angel_Hook_Protraccion_CIII.jpg", True, "19_Recorte_AngelHook")
-    extraer_pagina_y_recortes(pdf_cuaderno, 38, "20_Protocolo_A6_Reglas_Avance_Mandibular.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 39, "21_Figura_6_Avance_Mandibular_A6_Bloques.jpg", True, "21_Recorte_A6")
-    extraer_pagina_y_recortes(pdf_cuaderno, 43, "22_Porfolio_Angel_Select_10_20_30_Unlimited.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 44, "23_Porfolio_Angel_Pro_7_Mas_3.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 45, "24_Protocolo_Angel_Kid_Notas_Romina.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 46, "25_Esquema_Angel_Kid_Levantes_Y_A6.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 47, "26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg")
-    extraer_pagina_y_recortes(pdf_cuaderno, 48, "27_Tabla_Aditamentos_Angel_Kid.jpg")
+    # 2. Cuaderno Angel Academy (Detecta automáticamente tu versión de 40 páginas con páginas eliminadas)
+    if pdf_cuaderno and os.path.isfile(pdf_cuaderno):
+        try:
+            doc_c = fitz.open(pdf_cuaderno)
+            total_pags = len(doc_c)
+            doc_c.close()
+        except Exception:
+            total_pags = 40
+
+        if total_pags <= 42:
+            # Mapeo exacto para tu PDF de 40 páginas (con páginas eliminadas)
+            extraer_pagina_y_recortes(pdf_cuaderno, 2, "05_Notas_Tips_Trucos_Zamora_Vignolo.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 3, "05b_Indice_Ortodoncia_Interceptiva_Y_Protocolos.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 8, "06a_Esquema_3D_Vias_Aereas_Senos_Raices.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 11, "06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg", True, "06_Recorte_IRS")
+            extraer_pagina_y_recortes(pdf_cuaderno, 14, "07_Material_Dual_MasterControl_S_Y_MC.jpg", True, "07_Recorte_Material")
+            extraer_pagina_y_recortes(pdf_cuaderno, 15, "07b_Propiedades_MasterControl_S_Triple_Capa.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 16, "07c_Propiedades_MasterControl_Rigido_Pro.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 17, "08_Caso_Intraoral_AngelButton_Y_TADs.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 20, "09_Lineas_De_Corte_Variable_3_Tipos.jpg", True, "09_Recorte_Corte")
+            extraer_pagina_y_recortes(pdf_cuaderno, 21, "10_Esquema_3D_Ataches_Y_Areas_Presion.jpg", True, "10_Recorte_3D")
+            extraer_pagina_y_recortes(pdf_cuaderno, 22, "11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 23, "12_Tabla_2_Ataches_De_Precision.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 24, "13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 25, "14_Tabla_4_Recortes_Elasticos_Boton_Bracket.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 26, "15_Tabla_5_Levantes_De_Mordida_Bite_Turbos.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 27, "16_Detalle_Clinico_AngelButton_TAD.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 28, "17_Detalle_Perfil_AngelButton_TPU.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 29, "18_Figura_4_Aplicaciones_AngelButton_360.jpg", True, "18_Recorte_AngelButton")
+            extraer_pagina_y_recortes(pdf_cuaderno, 30, "19_Figura_5_Angel_Hook_Protraccion_CIII.jpg", True, "19_Recorte_AngelHook")
+            extraer_pagina_y_recortes(pdf_cuaderno, 31, "20_Protocolo_A6_Reglas_Avance_Mandibular.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 32, "21_Figura_6_Avance_Mandibular_A6_Bloques.jpg", True, "21_Recorte_A6")
+            extraer_pagina_y_recortes(pdf_cuaderno, 34, "22_Porfolio_Angel_Select_10_20_30_Unlimited.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 35, "23_Porfolio_Angel_Pro_7_Mas_3.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 36, "24_Protocolo_Angel_Kid_Notas_Romina.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 37, "25_Esquema_Angel_Kid_Levantes_Y_A6.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 38, "26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 39, "27_Tabla_Aditamentos_Angel_Kid.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 40, "27b_Retenedores_MasterControl_076mm.jpg")
+        else:
+            # Mapeo por si en algún momento se usa el PDF de 49 páginas
+            extraer_pagina_y_recortes(pdf_cuaderno, 2, "05_Notas_Tips_Trucos_Zamora_Vignolo.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 17, "06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg", True, "06_Recorte_IRS")
+            extraer_pagina_y_recortes(pdf_cuaderno, 21, "07_Material_Dual_MasterControl_S_Y_MC.jpg", True, "07_Recorte_Material")
+            extraer_pagina_y_recortes(pdf_cuaderno, 24, "08_Caso_Intraoral_AngelButton_Y_TADs.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 27, "09_Lineas_De_Corte_Variable_3_Tipos.jpg", True, "09_Recorte_Corte")
+            extraer_pagina_y_recortes(pdf_cuaderno, 28, "10_Esquema_3D_Ataches_Y_Areas_Presion.jpg", True, "10_Recorte_3D")
+            extraer_pagina_y_recortes(pdf_cuaderno, 29, "11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 30, "12_Tabla_2_Ataches_De_Precision.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 31, "13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 32, "14_Tabla_4_Recortes_Elasticos_Boton_Bracket.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 33, "15_Tabla_5_Levantes_De_Mordida_Bite_Turbos.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 34, "16_Detalle_Clinico_AngelButton_TAD.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 35, "17_Detalle_Perfil_AngelButton_TPU.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 36, "18_Figura_4_Aplicaciones_AngelButton_360.jpg", True, "18_Recorte_AngelButton")
+            extraer_pagina_y_recortes(pdf_cuaderno, 37, "19_Figura_5_Angel_Hook_Protraccion_CIII.jpg", True, "19_Recorte_AngelHook")
+            extraer_pagina_y_recortes(pdf_cuaderno, 38, "20_Protocolo_A6_Reglas_Avance_Mandibular.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 39, "21_Figura_6_Avance_Mandibular_A6_Bloques.jpg", True, "21_Recorte_A6")
+            extraer_pagina_y_recortes(pdf_cuaderno, 43, "22_Porfolio_Angel_Select_10_20_30_Unlimited.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 44, "23_Porfolio_Angel_Pro_7_Mas_3.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 45, "24_Protocolo_Angel_Kid_Notas_Romina.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 46, "25_Esquema_Angel_Kid_Levantes_Y_A6.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 47, "26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg")
+            extraer_pagina_y_recortes(pdf_cuaderno, 48, "27_Tabla_Aditamentos_Angel_Kid.jpg")
 
     # 3. Catálogo General Angel Aligner (ANGEL1.pdf)
     extraer_pagina_y_recortes(pdf_angel1, 6, "28_IRS_Control_Corona_Raiz_CBCT.jpg")
@@ -117,38 +162,25 @@ def construir_base_datos_visual():
     extraer_pagina_y_recortes(pdf_brochure, 6, "36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg", True, "36_Recorte_SetupCIII")
     extraer_pagina_y_recortes(pdf_brochure, 7, "37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg")
 
-    # 6. Extraer fotos clínicas (tanto si están sueltas en el repo/subcarpetas como si están en .zip)
+    # 6. Procesar todas las fotos sueltas (.JPG, .jpeg, .HEIC) de la carpeta del curso en GitHub
     for raiz, _, archivos in os.walk("."):
         if CARPETA_FOTOS in raiz or ".git" in raiz:
             continue
-        for f in archivos:
+        for f in sorted(archivos):
+            if f.startswith("._"):
+                continue
             ruta_completa = os.path.join(raiz, f)
-            # Si hay algún archivo .zip
-            if f.lower().endswith(".zip"):
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".heic")):
                 try:
-                    with zipfile.ZipFile(ruta_completa, "r") as z:
-                        for member in z.namelist():
-                            if "__MACOSX" in member or os.path.basename(member).startswith("._"):
-                                continue
-                            bname = os.path.basename(member)
-                            if bname.lower().endswith((".jpg", ".jpeg", ".png", ".heic")):
-                                nombre_limpio = os.path.splitext(bname)[0] + ".jpg"
-                                out_img_path = os.path.join(CARPETA_FOTOS, f"Curso_{nombre_limpio}")
-                                if not os.path.isfile(out_img_path):
-                                    with z.open(member) as img_file:
-                                        im = Image.open(img_file).convert("RGB")
-                                        im.save(out_img_path, "JPEG", quality=90)
-                except Exception:
-                    pass
-            # Si son fotos sueltas (.jpg, .jpeg, .png, .heic) subidas directamente al repositorio
-            elif f.lower().endswith((".jpg", ".jpeg", ".png", ".heic")) and not f.startswith("._"):
-                try:
-                    nombre_limpio = os.path.splitext(f)[0] + ".jpg"
-                    prefijo = "" if nombre_limpio.startswith("Curso_") else "Curso_"
-                    out_img_path = os.path.join(CARPETA_FOTOS, f"{prefijo}{nombre_limpio}")
+                    base_sin_ext = os.path.splitext(f)[0]
+                    nombre_limpio = limpiar_nombre_archivo(base_sin_ext)
+                    if not nombre_limpio.startswith("Curso_"):
+                        nombre_limpio = f"Curso_{nombre_limpio}"
+                    out_img_path = os.path.join(CARPETA_FOTOS, f"{nombre_limpio}.jpg")
                     if not os.path.isfile(out_img_path):
                         im = Image.open(ruta_completa).convert("RGB")
-                        im.save(out_img_path, "JPEG", quality=90)
+                        im.thumbnail((1500, 1500))
+                        im.save(out_img_path, "JPEG", quality=85)
                 except Exception:
                     pass
 
@@ -172,7 +204,7 @@ def mostrar_fotos_referencia(texto_respuesta):
             with cols[idx % 2]:
                 st.image(ruta, caption=f"📌 {nombre_foto}", use_container_width=True)
 
-# 5. Barra lateral: Biblioteca Gráfica Interactiva
+# 5. Barra lateral: Biblioteca Gráfica Interactiva dividida por categorías
 st.sidebar.title("🦷 Biblioteca Gráfica Angel")
 archivos_graficos = []
 if os.path.isdir(CARPETA_FOTOS):
@@ -182,10 +214,20 @@ if os.path.isdir(CARPETA_FOTOS):
     ])
 
 if archivos_graficos:
-    st.sidebar.success(f"✅ {len(archivos_graficos)} láminas cargadas en la base de datos visual")
+    laminas_manuales = [f for f in archivos_graficos if not f.startswith("Curso_")]
+    fotos_curso = [f for f in archivos_graficos if f.startswith("Curso_")]
+
+    st.sidebar.success(f"✅ {len(laminas_manuales)} láminas de manuales + {len(fotos_curso)} fotos del curso cargadas")
+
+    categoria_visor = st.sidebar.radio(
+        "Tipo de documento gráfico:",
+        ["📘 Láminas y Tablas Oficiales (PDFs)", "📸 Fotos del Curso (IMG_...)"]
+    )
+
+    lista_mostrar = laminas_manuales if "Láminas" in categoria_visor else fotos_curso
     foto_sel = st.sidebar.selectbox(
-        "Consultar lámina o foto clínica:",
-        ["Selecciona una imagen..."] + archivos_graficos
+        "Selecciona una imagen para visualizar:",
+        ["Selecciona una imagen..."] + lista_mostrar
     )
     if foto_sel != "Selecciona una imagen...":
         st.sidebar.image(
@@ -209,20 +251,21 @@ lista_archivos_disponibles = ", ".join(archivos_graficos) if archivos_graficos e
 
 # ==============================================================================
 # 6. EL "LADRILLO" / FRAMEWORK BIOMECÁNICO COMPLETO DE ANGEL ALIGNER
+# (Texto puro sin f-string para evitar conflictos con fórmulas)
 # ==============================================================================
-FRAMEWORK_ANGEL_ALIGNER = f"""
+FRAMEWORK_BASE = """
 Actúa como un Ortodoncista Senior y Director Clínico experto en el sistema Angel Aligner (plataforma iOrtho), entrenado estrictamente con los protocolos clínicos, artículos científicos y anotaciones de los Dres. David González Zamora y Romina Vignolo Lobato (Angel Academy).
 
 REGLA CRÍTICA SOBRE DOCUMENTOS GRÁFICOS Y FOTOS DE REFERENCIA:
-Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. Archivos actualmente disponibles en la biblioteca: [{lista_archivos_disponibles}].
+Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. Archivos disponibles actualmente: [__LISTA_ARCHIVOS__].
 SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de corte, una herramienta de iOrtho o un protocolo clínico, DEBES escribir entre paréntesis el nombre exacto del archivo `.jpg` de esta lista para que la aplicación muestre automáticamente la imagen en pantalla:
 - `01_Atache_DGZ_Geometria_Vectores.jpg` y `01_Recorte_DGZ_P4_Fig1.jpg`: Geometría del Atache DGZ (Double Gripping Zag) con lóbulo gingival (M) y lóbulo incisal (S) y vectores de fuerza F1 y F2 a ambos lados del centro de resistencia.
 - `02_Atache_DGZ_Cierre_Diastema_MARPE.jpg`: Planificación en iOrtho y evolución clínica intraoral del cierre de diastema post-MARPE con Atache DGZ.
 - `03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg`: Setup 3D del Atache DGZ para control de tip en caninos, premolares y enderezamiento molar.
 - `04_Atache_DGZ_vs_Doble_Tip_Invisalign.jpg`: Comparativa biomecánica entre el atache de doble tip clásico de Invisalign (d=4mm, F=0.5N) y el Atache DGZ (d=10.7mm, F=0.19N).
-- `05_Notas_Tips_Trucos_Zamora_Vignolo.jpg`: Resumen de tips y trucos clínicos de David González Zamora y Romina Vignolo (citas, TADs, A8, curva de Spee).
-- `06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg`: Cefalometría asistida por IA e integración radicular 3D con CBCT (IRS - Intelligent Root System).
-- `07_Material_Dual_MasterControl_S_Y_MC.jpg`: Estructura del sistema dual Angel Aligner Pro (7 días MasterControl S multicapa + 3 días MasterControl TPU rígido).
+- `05_Notas_Tips_Trucos_Zamora_Vignolo.jpg` y `05b_Indice_Ortodoncia_Interceptiva_Y_Protocolos.jpg`: Resumen de tips y trucos clínicos de David González Zamora y Romina Vignolo (citas, TADs, A8, curva de Spee, guía para la lengua, bloques rectos).
+- `06_iOrtho_Cefalometria_IA_E_IRS_CBCT.jpg` y `06a_Esquema_3D_Vias_Aereas_Senos_Raices.jpg`: Cefalometría asistida por IA, vías aéreas e integración radicular 3D con CBCT (IRS - Intelligent Root System).
+- `07_Material_Dual_MasterControl_S_Y_MC.jpg`, `07b_Propiedades_MasterControl_S_Triple_Capa.jpg` y `07c_Propiedades_MasterControl_Rigido_Pro.jpg`: Estructura y tablas de propiedades del sistema dual Angel Aligner Pro (7 días MasterControl S multicapa + 3 días MasterControl TPU rígido).
 - `08_Caso_Intraoral_AngelButton_Y_TADs.jpg`: Fotografía intraoral de tratamiento con AngelButtons, recortes y microtornillos.
 - `09_Lineas_De_Corte_Variable_3_Tipos.jpg`: Comparativa 3D de Línea de corte festoneada gingival, recta alta a 2.5 mm y mixta (festoneada anterior + 2.5 mm posterior).
 - `10_Esquema_3D_Ataches_Y_Areas_Presion.jpg`: Vista 3D de ataches y áreas de presión en iOrtho.
@@ -236,14 +279,13 @@ SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de cor
 - `19_Figura_5_Angel_Hook_Protraccion_CIII.jpg`: Detalle del Angel Hook para tracción anterior del maxilar con máscara facial en Clase III.
 - `20_Protocolo_A6_Reglas_Avance_Mandibular.jpg` y `21_Figura_6_Avance_Mandibular_A6_Bloques.jpg`: Protocolo A6 y fotografías intraorales de los bloques de avance mandibular.
 - `22_Porfolio_Angel_Select_10_20_30_Unlimited.jpg` y `23_Porfolio_Angel_Pro_7_Mas_3.jpg`: Especificaciones de Angel Aligner Select y Pro.
-- `24_Protocolo_Angel_Kid_Notas_Romina.jpg`, `25_Esquema_Angel_Kid_Levantes_Y_A6.jpg`, `26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg` y `27_Tabla_Aditamentos_Angel_Kid.jpg`: Protocolos y aditamentos de Angel Aligner KiD (K1 y K2).
+- `24_Protocolo_Angel_Kid_Notas_Romina.jpg`, `25_Esquema_Angel_Kid_Levantes_Y_A6.jpg`, `26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg`, `27_Tabla_Aditamentos_Angel_Kid.jpg` y `27b_Retenedores_MasterControl_076mm.jpg`: Protocolos y aditamentos de Angel Aligner KiD (K1 y K2) y retenedores.
 - `28_IRS_Control_Corona_Raiz_CBCT.jpg`: Esquema de los 4 tipos de movimiento corona-raíz en el sistema IRS.
 - `29_Esquema_Biomecanico_A6_Avance_Mandibular.jpg`: Esquema biomecánico de apertura y avance con bloques A6.
 - `30_Protocolos_A7_Extracciones_Y_A8_Distalizacion.jpg`: Esquema biomecánico de las soluciones A7 (Extracción de premolares) y A8 (Distalización molar).
 - `31_Catalogo_Visual_AngelAttach.jpg` y `32_Catalogo_Visual_Areas_Presion_Y_Auxiliares.jpg`: Catálogo visual de todos los ataches, áreas de presión, pónticos, power-arm y guías de erupción.
 - `33_Comparativa_Bloques_A6_Rectos_vs_Inclinados.jpg`, `34_Curva_Crecimiento_Y_5_Pasos_Clase_II.jpg` y `35_Opciones_Elasticos_Clase_II_Con_A6.jpg`: Figuras del artículo científico de Clase II (bloques rectos vs inclinados, curva de crecimiento y elásticos).
 - `36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg` y `37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg`: Caso clínico de Clase III tratado en 39 alineadores Pro con protocolo A8.
-- Fotos clínicas adicionales del curso: `Curso_IMG_1623_Original.jpg`, `Curso_IMG_1624_Original.jpg`, `Curso_IMG_1631_Original.jpg`, `Curso_IMG_1640_Original.jpg`, `Curso_IMG_1645_Original.jpg`, `Curso_IMG_1656_Original.jpg`, `Curso_IMG_1678_Original.jpg`, `Curso_IMG_1688_Original.jpg`, `Curso_IMG_1689_Original.jpg`, `Curso_IMG_1702_Original.jpg`, `Curso_IMG_1711_Original.jpg`, `Curso_IMG_2589.jpg`, `Curso_IMG_2602.jpg`, `Curso_IMG_2914.jpg`.
 
 ====================================================================
 1. PORFOLIO DE PRODUCTOS, MATERIALES Y RITMO CLÍNICO
@@ -281,9 +323,9 @@ SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de cor
 ====================================================================
 A) ATACHE DGZ ("Double Gripping Zag Attachment" — Zamora & Vignolo, 2025) (`01_Atache_DGZ_Geometria_Vectores.jpg`, `02_Atache_DGZ_Cierre_Diastema_MARPE.jpg`, `03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg`, `04_Atache_DGZ_vs_Doble_Tip_Invisalign.jpg`, `11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg`):
 - **Qué es y cómo se diseña:** Dispositivo de doble lóbulo biselado diseñado para optimizar el control del **tip mesiodistal y el movimiento en masa**. Consta de dos lóbulos separados diagonalmente al máximo dentro de la corona clínica (respetando 1 mm de margen incisal, gingival, mesial y distal):
-  * **Lóbulo gingival (Talla M):** Ubicado a 1 mm del margen gingival (ej. en mesial-gingival), con su superficie activa biselada aplicando una fuerza en dirección incisal ($F_1$). Además aporta retención cervical evitando que el alineador se desadapte.
-  * **Lóbulo incisal (Talla S):** Ubicado en el extremo opuesto a 1 mm del borde incisal (ej. en distal-incisal), con su superficie activa biselada aplicando una fuerza paralela y opuesta en dirección gingival ($F_2$).
-- **Justificación física exacta:** En un incisivo central estándar ($8.5\text{ mm}$ de ancho x $10.5\text{ mm}$ de alto), el atache doble clásico de Invisalign tiene una separación efectiva de solo $d = 4\text{ mm}$ y sus vectores pasan por el mismo lado (incisal) lejos del Centro de Resistencia (CR), exigiendo $0.50\text{ N}$ por lóbulo. El **Atache DGZ** alcanza una separación diagonal de **$d = \sqrt{6.5^2 + 8.5^2} \approx 10.7\text{ mm}$** y sus vectores pasan **a ambos lados (mesial y distal) del Centro de Resistencia**, generando el mismo momento rotacional puro ($2\text{ N}\cdot\text{mm}$ por grado de tip) con solo **$0.19\text{ N}$** de fuerza, sin traslación parásita y protegiendo el periodonto.
+  * **Lóbulo gingival (Talla M):** Ubicado a 1 mm del margen gingival (ej. en mesial-gingival), con su superficie activa biselada aplicando una fuerza en dirección incisal (F1). Además aporta retención cervical evitando que el alineador se desadapte.
+  * **Lóbulo incisal (Talla S):** Ubicado en el extremo opuesto a 1 mm del borde incisal (ej. en distal-incisal), con su superficie activa biselada aplicando una fuerza paralela y opuesta en dirección gingival (F2).
+- **Justificación física exacta:** En un incisivo central estándar (8.5 mm de ancho x 10.5 mm de alto), el atache doble clásico de Invisalign tiene una separación efectiva de solo d = 4 mm y sus vectores pasan por el mismo lado (incisal) lejos del Centro de Resistencia (CR), exigiendo 0.50 N por lóbulo. El **Atache DGZ** alcanza una separación diagonal de **d = raiz_cuadrada(6.5^2 + 8.5^2) = 10.7 mm** y sus vectores pasan **a ambos lados (mesial y distal) del Centro de Resistencia**, generando el mismo momento rotacional puro (2 N·mm por grado de tip) con solo **0.19 N** de fuerza, sin traslación parásita y protegiendo el periodonto.
 - **Indicaciones clínicas del Atache DGZ (preferirlo siempre frente al atache rectangular o al doble tip clásico):**
   1) Cierre de diastemas interincisivos (ej. tras disyunción con MARPE, evitando el uso de *power arms*).
   2) Corrección de tip radicular en caninos (especialmente caninos inferiores), premolares y molares.
@@ -367,6 +409,8 @@ Al auditar las capturas de pantalla de iOrtho subidas por el doctor:
 4) **Anchura de la Arcada (`3-3`, `4-4`, `5-5`, `6-6`):** Alertar si hay estrechamiento/colapso severo de la distancia intercanina (`3-3` muy negativo, ej. `-4.3 mm`) o compresión posterior.
 5) **OB/OJ (Sobremordida y Resalte):** Si la sobremordida (OB) objetivo sube cerca de `3.0 mm` al retruir o cerrar espacios, alertar del riesgo de mordida profunda secundaria y pedir **levantes de mordida anteriores adaptativos de 3 a 3** y sobrecorrección vertical.
 """
+
+FRAMEWORK_ANGEL_ALIGNER = FRAMEWORK_BASE.replace("__LISTA_ARCHIVOS__", lista_archivos_disponibles)
 
 # 7. Inicializar el modelo Gemini
 modelo = genai.GenerativeModel(
