@@ -14,6 +14,12 @@ try:
 except Exception:
     pass
 
+try:
+    from streamlit_image_coordinates import streamlit_image_coordinates
+    TIENE_CLICK_IMAGEN = True
+except Exception:
+    TIENE_CLICK_IMAGEN = False
+
 # 1. Configuración general de la página
 st.set_page_config(
     page_title="Asistente Clínico Angel Aligner - iOrtho",
@@ -410,26 +416,30 @@ modelo = genai.GenerativeModel(
 )
 
 # ==============================================================================
-# FUNCIONES MATEMÁTICAS Y DE TRAZADO PARA LA PESTAÑA 4 (CEFALOMETRÍA A3D)
+# FUNCIONES MATEMÁTICAS Y DE TRAZADO PARA LA PESTAÑA 3 (CEFALOMETRÍA A3D)
 # ==============================================================================
 PUNTOS_A3D_DEFAULT = {
-    "Po":  {"x": 180, "y": 120, "desc": "Porion (Ref. Horizontal Frankfort en iOrtho)"},
-    "Or":  {"x": 820, "y": 120, "desc": "Orbitale (Ref. Horizontal Frankfort en iOrtho)"},
-    "enp": {"x": 275, "y": 215, "desc": "Espina Nasal Posterior (PNS)"},
-    "ena": {"x": 805, "y": 175, "desc": "Espina Nasal Anterior (ANS)"},
-    "A":   {"x": 768, "y": 285, "desc": "Punto A (Subespinal maxilar)"},
-    "ISR": {"x": 715, "y": 270, "desc": "Ápice Radicular Incisivo Central Superior"},
-    "IS":  {"x": 845, "y": 488, "desc": "Borde Incisal Incisivo Central Superior"},
-    "IIR": {"x": 698, "y": 635, "desc": "Ápice Radicular Incisivo Central Inferior"},
-    "II":  {"x": 800, "y": 465, "desc": "Borde Incisal Incisivo Central Inferior"},
-    "OP":  {"x": 395, "y": 440, "desc": "Oclusal Posterior (Contacto de primeros molares)"},
-    "OA":  {"x": 815, "y": 475, "desc": "Oclusal Anterior (Punto medio incisal/premolar)"},
-    "B":   {"x": 745, "y": 640, "desc": "Punto B (Supramental mandibular)"},
-    "Pg":  {"x": 798, "y": 785, "desc": "Pogonion (Punto más anterior del mentón óseo)"},
-    "Me":  {"x": 725, "y": 865, "desc": "Menton (Punto más inferior de la sínfisis)"},
-    "Ag":  {"x": 455, "y": 765, "desc": "Escotadura Antegonial (Borde inferior mandibular para IMPA)"},
-    "Goe": {"x": 245, "y": 680, "desc": "Gonion Externo (Ángulo mandibular para Plano Mandibular)"},
+    "ena": {"x": 805, "y": 205, "desc": "Espina Nasal Anterior (ANS - Punta ósea anterior del maxilar)"},
+    "enp": {"x": 275, "y": 195, "desc": "Espina Nasal Posterior (PNS - Extremo posterior del paladar duro)"},
+    "A":   {"x": 768, "y": 285, "desc": "Punto A (Punto más profundo de la concavidad subespinal maxilar)"},
+    "ISR": {"x": 715, "y": 270, "desc": "Ápice Radicular del Incisivo Central Superior"},
+    "IS":  {"x": 845, "y": 488, "desc": "Borde Incisal del Incisivo Central Superior"},
+    "II":  {"x": 800, "y": 465, "desc": "Borde Incisal del Incisivo Central Inferior"},
+    "IIR": {"x": 698, "y": 635, "desc": "Ápice Radicular del Incisivo Central Inferior"},
+    "OP":  {"x": 395, "y": 430, "desc": "Oclusal Posterior (Contacto intercuspídeo de primeros molares)"},
+    "OA":  {"x": 815, "y": 475, "desc": "Oclusal Anterior (Punto anterior del plano oclusal funcional)"},
+    "B":   {"x": 745, "y": 640, "desc": "Punto B (Punto más profundo de la concavidad supramental)"},
+    "Pg":  {"x": 760, "y": 785, "desc": "Pogonion (Punto más anterior del mentón óseo)"},
+    "Me":  {"x": 710, "y": 855, "desc": "Menton (Punto más inferior de la sínfisis mentoniana)"},
+    "Ag":  {"x": 455, "y": 755, "desc": "Escotadura Antegonial (Borde inferior mandibular para IMPA)"},
+    "Goe": {"x": 245, "y": 650, "desc": "Gonion Externo (Ángulo posteroinferior mandibular para Plano Mandibular)"},
+    "Po":  {"x": 180, "y": 120, "desc": "Porion (Extremo posterior del Plano de Frankfort de referencia)"},
+    "Or":  {"x": 820, "y": 120, "desc": "Orbitale (Extremo anterior del Plano de Frankfort de referencia)"},
+    "VVS": {"x": 880, "y": 100, "desc": "Vertical Verdadera Superior (Eje de plomada superior)"},
+    "VVI": {"x": 880, "y": 900, "desc": "Vertical Verdadera Inferior (Eje de plomada inferior)"},
 }
+
+ORDEN_PUNTOS_A3D = list(PUNTOS_A3D_DEFAULT.keys())
 
 def dist_2p(p1, p2, escala_mm_por_unidad):
     return math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * escala_mm_por_unidad
@@ -445,16 +455,13 @@ def proyeccion_sobre_recta(l1, l2, p3, p4, escala_mm_por_unidad):
     proj_p4 = (p4[0] - l1[0]) * ux + (p4[1] - l1[1]) * uy
     return (proj_p4 - proj_p3) * escala_mm_por_unidad
 
-def dist_perp_a_recta(l1, l2, p, escala_mm_por_unidad, invertir_signo=False):
+def dist_perp_con_signo(l1, l2, p, escala_mm_por_unidad):
     dx = l2[0] - l1[0]
     dy = l2[1] - l1[1]
     mag = math.hypot(dx, dy)
     if mag == 0:
         return 0.0
-    # Vector normal (hacia la derecha/anterior o hacia arriba según orientación)
-    cruz = (p[0] - l1[0]) * dy - (p[1] - l1[1]) * dx
-    dist = (cruz / mag) * escala_mm_por_unidad
-    return -dist if invertir_signo else dist
+    return ((p[0] - l1[0]) * dy - (p[1] - l1[1]) * dx) / mag * escala_mm_por_unidad
 
 def angulo_entre_vectores(p1, p2, p3, p4):
     v1x, v1y = p2[0] - p1[0], p2[1] - p1[1]
@@ -474,12 +481,16 @@ def clasificar_valor(valor, norma, tol, et_baja, et_norm, et_alta):
     else:
         return f"🟢 {et_norm}"
 
-def calcular_analisis_a3d(pts, mm_ref_ena_me=61.6):
-    # Escala automática tomando como referencia la Altura Facial Anterior Inferior (ENA-Me) o escala calibrada
-    dist_unidades_ena_me = math.hypot(pts["Me"][0] - pts["ena"][0], pts["Me"][1] - pts["ena"][1])
-    escala = (mm_ref_ena_me / dist_unidades_ena_me) if dist_unidades_ena_me > 0 else 0.1
+def calcular_analisis_a3d(pts, modo_calibracion, valor_mm_cal):
+    # Escala independiente para que al mover ena o Me cambie la Altura Facial Anterior Inferior en tiempo real
+    if "Incisivo Superior" in modo_calibracion:
+        dist_ref = math.hypot(pts["IS"][0] - pts["ISR"][0], pts["IS"][1] - pts["ISR"][1])
+        escala = (valor_mm_cal / dist_ref) if dist_ref > 0 else 0.095
+    else:
+        escala = valor_mm_cal / 1000.0
 
     Po, Or = pts["Po"], pts["Or"]
+    VVI, VVS = pts["VVI"], pts["VVS"]
     enp, ena = pts["enp"], pts["ena"]
     A, B, Pg, Me = pts["A"], pts["B"], pts["Pg"], pts["Me"]
     ISR, IS = pts["ISR"], pts["IS"]
@@ -492,23 +503,21 @@ def calcular_analisis_a3d(pts, mm_ref_ena_me=61.6):
     dist_a_pog = proyeccion_sobre_recta(Po, Or, Pg, A, escala)
 
     # 02. DIMENSIÓN VERTICAL
-    # Inclinación Plano Palatino respecto a Frankfort (positivo si rota horario / baja delante)
     ang_palat = math.degrees(math.atan2(ena[1] - enp[1], ena[0] - enp[0]) - math.atan2(Or[1] - Po[1], Or[0] - Po[0]))
-    v_verdadera = 90.0 + abs(math.degrees(math.atan2(Or[1] - Po[1], Or[0] - Po[0]))) + 4.0
+    v_verdadera = angulo_entre_vectores(Po, Or, VVI, VVS)
     ang_mand = angulo_entre_vectores(Goe, Me, Po, Or)
     afai = dist_2p(ena, Me, escala)
 
     # 03. DENTOALVEOLAR
     overjet = proyeccion_sobre_recta(OP, OA, II, IS, escala)
-    # Overbite: distancia vertical/perpendicular entre IS e II respecto al plano oclusal
-    overbite = (IS[1] - II[1]) * escala
-    extrusion_ii = abs(dist_perp_a_recta(OP, OA, II, escala))
+    overbite = dist_perp_con_signo(OP, OA, II, escala) - dist_perp_con_signo(OP, OA, IS, escala)
+    extrusion_ii = dist_perp_con_signo(OP, OA, II, escala)
     ang_interincisivo = 180.0 - angulo_entre_vectores(ISR, IS, IIR, II)
     if ang_interincisivo < 90.0:
         ang_interincisivo = angulo_entre_vectores(IS, ISR, II, IIR)
 
-    protrusion_ii = dist_perp_a_recta(A, Pg, II, escala, invertir_signo=False)
-    protrusion_is = dist_perp_a_recta(A, Pg, IS, escala, invertir_signo=False)
+    protrusion_ii = dist_perp_con_signo(A, Pg, II, escala)
+    protrusion_is = dist_perp_con_signo(A, Pg, IS, escala)
     inclinacion_ii = angulo_entre_vectores(Pg, A, IIR, II)
     inclinacion_is = angulo_entre_vectores(A, Pg, ISR, IS)
     ang_ocl_fr = angulo_entre_vectores(OP, OA, Po, Or)
@@ -541,7 +550,7 @@ def calcular_analisis_a3d(pts, mm_ref_ena_me=61.6):
     ]
     return resultados
 
-def dibujar_trazado_a3d(img_pil, pts):
+def dibujar_trazado_a3d(img_pil, pts, punto_activo=None):
     im = img_pil.copy().convert("RGB")
     w, h = im.size
     draw = ImageDraw.Draw(im)
@@ -549,9 +558,9 @@ def dibujar_trazado_a3d(img_pil, pts):
     def px(pt_name):
         return (int(pts[pt_name][0] * w / 1000.0), int(pts[pt_name][1] * h / 1000.0))
 
-    # Dibujar planos principales
     planos = [
         ("Po", "Or", (0, 180, 255), 3),     # Frankfort (Azul celeste)
+        ("VVS", "VVI", (160, 160, 160), 2), # Vertical Verdadera (Gris)
         ("enp", "ena", (0, 200, 80), 3),    # Plano Palatino (Verde)
         ("OP", "OA", (255, 165, 0), 3),     # Plano Oclusal (Naranja)
         ("Goe", "Me", (0, 120, 255), 3),    # Plano Mandibular (Azul)
@@ -564,19 +573,49 @@ def dibujar_trazado_a3d(img_pil, pts):
     for p_ini, p_fin, color, grosor in planos:
         draw.line([px(p_ini), px(p_fin)], fill=color, width=grosor)
 
-    # Dibujar puntos y etiquetas
     r = max(4, int(min(w, h) * 0.008))
-    for nombre, coord in pts.items():
+    for nombre in pts.keys():
         cx, cy = px(nombre)
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 230, 0), outline=(0, 0, 0), width=2)
-        draw.text((cx + r + 3, cy - r - 3), nombre, fill=(20, 20, 20))
+        if nombre == punto_activo:
+            # Resaltar el punto seleccionado para edición manual con doble anillo cian/rojo
+            r_act = r + 5
+            draw.ellipse([cx - r_act, cy - r_act, cx + r_act, cy + r_act], outline=(0, 255, 255), width=3)
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(0, 255, 255), outline=(255, 0, 0), width=2)
+            draw.text((cx + r_act + 3, cy - r_act - 3), f"▶ {nombre}", fill=(220, 0, 0))
+        else:
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 230, 0), outline=(0, 0, 0), width=2)
+            draw.text((cx + r + 3, cy - r - 3), nombre, fill=(20, 20, 20))
 
     return im
+
+def generar_lupa_punto(img_pil, pt_coord, nombre_pt):
+    im = img_pil.copy().convert("RGB")
+    w, h = im.size
+    cx = int(pt_coord[0] * w / 1000.0)
+    cy = int(pt_coord[1] * h / 1000.0)
+    radio_crop = max(45, int(min(w, h) * 0.09))
+
+    left = max(0, cx - radio_crop)
+    top = max(0, cy - radio_crop)
+    right = min(w, cx + radio_crop)
+    bottom = min(h, cy + radio_crop)
+
+    recorte = im.crop((left, top, right, bottom)).resize((240, 240), Image.Resampling.BILINEAR)
+    draw_lupa = ImageDraw.Draw(recorte)
+    px_rel = int((cx - left) / max(1, (right - left)) * 240)
+    py_rel = int((cy - top) / max(1, (bottom - top)) * 240)
+
+    # Cruceta de precisión en la lupa
+    draw_lupa.line([(px_rel, 0), (px_rel, 240)], fill=(255, 0, 0), width=1)
+    draw_lupa.line([(0, py_rel), (240, py_rel)], fill=(255, 0, 0), width=1)
+    draw_lupa.ellipse([px_rel - 6, py_rel - 6, px_rel + 6, py_rel + 6], outline=(0, 255, 255), width=2)
+    draw_lupa.text((8, 8), f"Lupa 4x: {nombre_pt} ({pt_coord[0]}, {pt_coord[1]})", fill=(255, 0, 0))
+    return recorte
 
 # 8. Interfaz Principal
 st.title("🦷 Asistente Clínico de Ortodoncia — Angel Aligner (iOrtho)")
 st.markdown(
-    "Sistema de **Prescripción Inicial**, **Auditoría del Setup 3D (Tabla TM / Bolton / OB-OJ)**, **Cefalometría 3D (Método A3D)** y **Base de Datos Gráfica** "
+    "Sistema de **Prescripción Inicial**, **Auditoría del Setup 3D (Tabla TM / Bolton / OB-OJ)**, **Cefalometría 3D Interactiva (Método A3D)** y **Base de Datos Gráfica** "
     "basado en los manuales, artículos y cursos de los Dres. **David González Zamora y Romina Vignolo Lobato**."
 )
 
@@ -590,11 +629,15 @@ if "ultimo_informe_cefa" not in st.session_state:
     st.session_state.ultimo_informe_cefa = ""
 if "puntos_cefa_a3d" not in st.session_state:
     st.session_state.puntos_cefa_a3d = {k: (v["x"], v["y"]) for k, v in PUNTOS_A3D_DEFAULT.items()}
+if "idx_punto_activo" not in st.session_state:
+    st.session_state.idx_punto_activo = 0
+if "ultimo_click_img" not in st.session_state:
+    st.session_state.ultimo_click_img = None
 
 tab_diag, tab_setup, tab_cefa, tab_chat = st.tabs([
     "📋 Fase 1: Diagnóstico y Prescripción Inicial",
     "🔍 Fase 2: Auditoría del 1er Setup (Capturas iOrtho / Tabla TM)",
-    "📐 Fase 3: Cefalometría 3D iOrtho (Método A3D)",
+    "📐 Fase 3: Cefalometría 3D Interactiva (Método A3D)",
     "💬 Fase 4: Chat Clínico y Buscador Visual (Atache DGZ, Tablas, Protocolos)"
 ])
 
@@ -832,22 +875,14 @@ Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la 
         mostrar_fotos_referencia(st.session_state.ultima_auditoria)
 
 # ==============================================================================
-# PESTAÑA 3: CEFALOMETRÍA 3D iORTHO — MÉTODO "A3D - DIAGNOSTICO 3D"
+# PESTAÑA 3: CEFALOMETRÍA 3D INTERACTIVA — MÉTODO "A3D - DIAGNOSTICO 3D"
 # ==============================================================================
 with tab_cefa:
-    st.subheader("📐 Análisis Cefalométrico 3D sobre Vista Lateral Derecha de iOrtho (Método A3D)")
+    st.subheader("📐 Cefalometría 3D Interactiva sobre Vista Lateral Derecha de iOrtho (Método A3D)")
     st.markdown(
-        "Sube la **captura de pantalla de la vista lateral derecha del modelo 3D (IRS/CBCT) de iOrtho**. "
-        "El agente de IA localizará automáticamente los puntos cefalométricos, dibujará el trazado sobre la imagen y "
-        "calculará las **17 medidas exactas de tu método `A3D - DIAGNOSTICO 3D`** (`01 Clase Esquelética`, `02 Dimensión Vertical` y `03 Dentoalveolar`)."
+        "Puedes **detectar los puntos automáticamente con IA** y **modificar manualmente cualquier punto** "
+        "haciendo **clic directamente sobre la imagen**, usando la **Lupa de precisión 4x con flechas** o editando las coordenadas."
     )
-
-    with st.expander("ℹ️ Nota importante sobre los puntos `Po-Or` (Frankfort) y la escala en `mm` en el modelo 3D de iOrtho"):
-        st.markdown(
-            "- **Plano de Frankfort (`Po - Or`):** Como el recorte 3D de iOrtho corta el hueso justo por encima del suelo nasal/seno maxilar (sin incluir el conducto auditivo `Po` ni el reborde orbitario `Or`), el sistema utiliza como referencia la **horizontal real de la vista lateral de iOrtho** (con opción de inclinarla si el CBCT del paciente no estaba orientado a Frankfort).\n"
-            "- **Ápices radiculares (`ISR`, `IIR`) y Espina Nasal (`ena`, `enp`):** Se localizan directamente sobre la transparencia ósea del sistema IRS de iOrtho.\n"
-            "- **Calibración en milímetros (`mm`):** Los **10 ángulos (`°`)** son 100% exactos e independientes del zoom. Para las **7 distancias en `mm`**, puedes calibrar la escala indicando la distancia `ENA-Me` (por defecto `61.6 mm`)."
-        )
 
     archivo_lat_3d = st.file_uploader(
         "📸 Sube aquí la captura de la Vista Lateral Derecha del modelo 3D de iOrtho:",
@@ -858,40 +893,37 @@ with tab_cefa:
     if archivo_lat_3d:
         img_cefa_pil = Image.open(archivo_lat_3d)
 
-        col_btn_ia, col_cal_mm = st.columns([2, 1])
-        with col_cal_mm:
-            mm_calibracion = st.number_input(
-                "📏 Calibración lineal: Altura ENA-Me de referencia (mm)",
-                min_value=35.0, max_value=90.0, value=61.6, step=0.5,
-                help="Sirve para escalar de píxeles a milímetros reales las medidas lineales (Wits, A-Pog, Overjet, Protrusión)."
-            )
-        with col_btn_ia:
-            st.write("")
-            if st.button("🤖 Detectar Puntos Cefalométricos Automáticamente con IA", type="primary"):
-                prompt_deteccion = """
-Analiza esta captura de pantalla de la vista lateral derecha del modelo 3D maxilomandibular de iOrtho (el paciente mira hacia la derecha de la imagen).
-Localiza con la máxima precisión anatómica las coordenadas (x, y) normalizadas en una escala de 0 a 1000 (donde x=0 es borde izquierdo, x=1000 es borde derecho, y=0 es borde superior, y=1000 es borde inferior) de los siguientes 16 puntos cefalométricos:
-- "Po": Punto de referencia posterior para la horizontal de Frankfort (x=180, misma altura y que Or en el tercio superior).
-- "Or": Punto de referencia anterior para la horizontal de Frankfort (x=820, misma altura y que Po).
-- "enp": Espina Nasal Posterior (extremo posterior del paladar duro / suelo nasal).
-- "ena": Espina Nasal Anterior (punta ósea más anterior de la espina nasal superior).
-- "A": Punto A (punto más profundo de la concavidad anterior del maxilar superior, bajo ENA).
-- "ISR": Ápice de la raíz del incisivo central superior más vestibular.
-- "IS": Borde incisal de la corona del incisivo central superior más vestibular.
-- "IIR": Ápice de la raíz del incisivo central inferior.
-- "II": Borde incisal de la corona del incisivo central inferior.
-- "OP": Punto Oclusal Posterior (contacto intercuspídeo de los primeros molares).
-- "OA": Punto Oclusal Anterior (contacto interincisivo / zona premolar-incisal del plano oclusal).
-- "B": Punto B (punto más profundo de la concavidad anterior de la sínfisis mandibular).
-- "Pg": Pogonion (punto más anterior del contorno óseo del mentón).
-- "Me": Menton (punto más inferior del contorno óseo de la sínfisis mentoniana).
-- "Ag": Escotadura antegonial en el borde inferior mandibular (para trazado de IMPA).
-- "Goe": Gonion externo (punto más posteroinferior del ángulo de la mandíbula).
+        # Barra superior de acciones y calibración
+        c_ia, c_reset, c_modo_cal, c_val_cal = st.columns([1.4, 1.0, 1.5, 1.1])
 
-Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto adicional:
-{"Po":[180,120],"Or":[820,120],"enp":[275,215],"ena":[805,175],"A":[768,285],"ISR":[715,270],"IS":[845,488],"IIR":[698,635],"II":[800,465],"OP":[395,440],"OA":[815,475],"B":[745,640],"Pg":[798,785],"Me":[725,865],"Ag":[455,765],"Goe":[245,680]}
+        with c_ia:
+            if st.button("🤖 Auto-situar puntos con IA", type="primary", use_container_width=True):
+                prompt_deteccion = """
+Analiza esta captura de pantalla de la vista lateral derecha del modelo 3D maxilomandibular de iOrtho (el paciente mira hacia la derecha).
+Devuelve las coordenadas (x, y) normalizadas de 0 a 1000 de los siguientes 18 puntos:
+- "ena": Espina Nasal Anterior
+- "enp": Espina Nasal Posterior
+- "A": Punto A subespinal
+- "ISR": Ápice radicular del incisivo central superior
+- "IS": Borde incisal del incisivo central superior
+- "II": Borde incisal del incisivo central inferior
+- "IIR": Ápice radicular del incisivo central inferior
+- "OP": Punto oclusal posterior (contacto de primeros molares)
+- "OA": Punto oclusal anterior (contacto premolar/incisal)
+- "B": Punto B supramental
+- "Pg": Pogonion
+- "Me": Menton
+- "Ag": Escotadura antegonial (borde inferior mandibular)
+- "Goe": Gonion externo (ángulo posteroinferior mandibular)
+- "Po": Referencia posterior horizontal Frankfort (x=180, y=120)
+- "Or": Referencia anterior horizontal Frankfort (x=820, y=120)
+- "VVS": Vertical verdadera superior (x=880, y=100)
+- "VVI": Vertical verdadera inferior (x=880, y=900)
+
+Devuelve SOLO un JSON válido:
+{"ena":[805,205],"enp":[275,195],"A":[768,285],"ISR":[715,270],"IS":[845,488],"II":[800,465],"IIR":[698,635],"OP":[395,430],"OA":[815,475],"B":[745,640],"Pg":[760,785],"Me":[710,855],"Ag":[455,755],"Goe":[245,650],"Po":[180,120],"Or":[820,120],"VVS":[880,100],"VVI":[880,900]}
 """
-                with st.spinner("Localizando puntos anatómicos 3D con visión artificial..."):
+                with st.spinner("Localizando puntos anatómicos con visión artificial..."):
                     try:
                         resp_pts = modelo.generate_content([prompt_deteccion, img_cefa_pil])
                         match_json = re.search(r"\{.*\}", resp_pts.text, re.DOTALL)
@@ -900,42 +932,155 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto a
                             for k in PUNTOS_A3D_DEFAULT.keys():
                                 if k in datos_json and isinstance(datos_json[k], list) and len(datos_json[k]) == 2:
                                     st.session_state.puntos_cefa_a3d[k] = (int(datos_json[k][0]), int(datos_json[k][1]))
-                            st.success("✅ Puntos localizados automáticamente. Puedes afinar cualquier punto en el desplegable de abajo si lo deseas.")
+                            st.rerun()
                     except Exception as e:
-                        st.warning(f"No se pudo auto-ajustar por IA ({e}); usando plantilla base ajustable.")
+                        st.warning(f"Ajuste automático no completado ({e}); usa el editor manual de abajo.")
 
-        with st.expander("🎯 Ajuste Fino Manual de Puntos Cefalométricos (en escala 0-1000 sobre la imagen)"):
-            cols_pts = st.columns(4)
-            for idx, (nombre_pt, info_pt) in enumerate(PUNTOS_A3D_DEFAULT.items()):
-                with cols_pts[idx % 4]:
-                    x_act, y_act = st.session_state.puntos_cefa_a3d[nombre_pt]
-                    nx = st.slider(f"{nombre_pt} (X - Horizontal)", 0, 1000, int(x_act), key=f"sl_x_{nombre_pt}", help=info_pt["desc"])
-                    ny = st.slider(f"{nombre_pt} (Y - Vertical)", 0, 1000, int(y_act), key=f"sl_y_{nombre_pt}", help=info_pt["desc"])
-                    st.session_state.puntos_cefa_a3d[nombre_pt] = (nx, ny)
+        with c_reset:
+            if st.button("🔄 Restablecer plantilla", use_container_width=True):
+                st.session_state.puntos_cefa_a3d = {k: (v["x"], v["y"]) for k, v in PUNTOS_A3D_DEFAULT.items()}
+                st.session_state.ultimo_click_img = None
+                st.rerun()
 
-        # Dibujar trazado y calcular resultados A3D
-        img_trazada = dibujar_trazado_a3d(img_cefa_pil, st.session_state.puntos_cefa_a3d)
-        resultados_a3d = calcular_analisis_a3d(st.session_state.puntos_cefa_a3d, mm_calibracion)
+        with c_modo_cal:
+            modo_calibracion = st.selectbox(
+                "📏 Referencia de escala (para medidas en mm)",
+                [
+                    "Ancho total del encuadre de la imagen (mm)",
+                    "Longitud total del Incisivo Superior IS-ISR (mm)"
+                ]
+            )
+        with c_val_cal:
+            val_def = 95.0 if "Ancho" in modo_calibracion else 23.5
+            valor_mm_cal = st.number_input(
+                "Valor en mm:",
+                min_value=10.0, max_value=250.0, value=val_def, step=0.5
+            )
 
-        col_visor, col_tabla = st.columns([1.15, 1.35])
-        with col_visor:
-            st.markdown("#### 🖼️ Trazado Cefalométrico A3D sobre Modelo iOrtho")
-            st.image(img_trazada, caption="Trazado A3D (Frankfort, Palatino, Oclusal, Mandibular, A-Pg y Ejes Incisivos)", use_container_width=True)
+        st.markdown("---")
 
-        with col_tabla:
-            st.markdown("#### 📊 Resultados del Método `A3D - DIAGNOSTICO 3D`")
-            tabla_md = "| Grupo | Medida | Valor Paciente | Norma (V9) | Tolerancia | Diagnóstico A3D |\n|---|---|---:|---:|---:|---|\n"
-            for r in resultados_a3d:
-                tabla_md += f"| **{r['Grupo']}** | **{r['Medida']}** | `{r['Valor']}` | {r['Norma']} | ± {r['Tol']} | {r['Diag']} |\n"
-            st.markdown(tabla_md)
+        # ======================================================================
+        # PANEL DE EDICIÓN MANUAL DE PUNTOS (CLIC EN IMAGEN + LUPA 4X + FLECHAS)
+        # ======================================================================
+        col_sel_pt, col_auto_next = st.columns([2.2, 1.2])
+        with col_sel_pt:
+            opciones_selector = [f"{k} — {PUNTOS_A3D_DEFAULT[k]['desc']}" for k in ORDEN_PUNTOS_A3D]
+            seleccion_actual = st.selectbox(
+                "🎯 1. Selecciona el Punto Cefalométrico que quieres mover o colocar manualmente:",
+                opciones_selector,
+                index=st.session_state.idx_punto_activo
+            )
+            pt_activo = seleccion_actual.split(" — ")[0]
+            st.session_state.idx_punto_activo = ORDEN_PUNTOS_A3D.index(pt_activo)
 
-        if st.button("🧠 Generar Diagnóstico Biomecánico Angel Aligner a partir de esta Cefalometría A3D", type="primary"):
+        with col_auto_next:
+            st.write("")
+            modo_secuencial = st.checkbox(
+                "⏭️ Pasar automáticamente al siguiente punto tras hacer clic en la imagen",
+                value=False,
+                help="Ideal para ir haciendo clic punto por punto sobre la imagen sin tener que cambiar el desplegable."
+            )
+
+        col_canvas, col_editor_manual = st.columns([1.35, 1.0])
+
+        # Dibujar imagen con el punto activo resaltado en color cian
+        img_trazada = dibujar_trazado_a3d(img_cefa_pil, st.session_state.puntos_cefa_a3d, punto_activo=pt_activo)
+
+        with col_canvas:
+            if TIENE_CLICK_IMAGEN:
+                st.markdown(f"**🖱️ Haz clic directamente sobre la imagen para situar el punto `{pt_activo}`:**")
+                ancho_visor = 620
+                alto_visor = int(img_trazada.size[1] * (ancho_visor / img_trazada.size[0]))
+                img_para_click = img_trazada.resize((ancho_visor, alto_visor), Image.Resampling.BILINEAR)
+
+                coords_click = streamlit_image_coordinates(img_para_click, key="click_cefa_a3d")
+                if coords_click is not None:
+                    firma_click = (coords_click["x"], coords_click["y"])
+                    if firma_click != st.session_state.ultimo_click_img:
+                        st.session_state.ultimo_click_img = firma_click
+                        nuevo_x = int(max(0, min(1000, round(coords_click["x"] * 1000.0 / ancho_visor))))
+                        nuevo_y = int(max(0, min(1000, round(coords_click["y"] * 1000.0 / alto_visor))))
+                        st.session_state.puntos_cefa_a3d[pt_activo] = (nuevo_x, nuevo_y)
+                        if modo_secuencial:
+                            st.session_state.idx_punto_activo = (st.session_state.idx_punto_activo + 1) % len(ORDEN_PUNTOS_A3D)
+                        st.rerun()
+            else:
+                st.image(img_trazada, caption=f"Punto activo resaltado en cian: {pt_activo}", use_container_width=True)
+                st.caption("💡 Nota: Si añades `streamlit-image-coordinates` a tu archivo `requirements.txt`, también podrás situar los puntos haciendo clic directamente con el ratón sobre esta imagen.")
+
+        with col_editor_manual:
+            st.markdown(f"#### 🔍 Edición Manual de `{pt_activo}`")
+            st.caption(PUNTOS_A3D_DEFAULT[pt_activo]["desc"])
+
+            x_actual, y_actual = st.session_state.puntos_cefa_a3d[pt_activo]
+
+            # Mostrar Lupa 4x en tiempo real
+            img_lupa = generar_lupa_punto(img_cefa_pil, (x_actual, y_actual), pt_activo)
+            st.image(img_lupa, width=220)
+
+            # Botones de micro-ajuste direccional (Nudge)
+            st.markdown("**Micro-ajuste con flechas:**")
+            b1, b2, b3, b4, b5, b6 = st.columns(6)
+            paso_fino = 2
+            paso_grueso = 12
+            if b1.button("⏪", help="Izquierda rápido (-12)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (max(0, x_actual - paso_grueso), y_actual)
+                st.rerun()
+            if b2.button("⬅️", help="Izquierda fino (-2)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (max(0, x_actual - paso_fino), y_actual)
+                st.rerun()
+            if b3.button("⬆️", help="Arriba fino (-2)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (x_actual, max(0, y_actual - paso_fino))
+                st.rerun()
+            if b4.button("⬇️", help="Abajo fino (+2)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (x_actual, min(1000, y_actual + paso_fino))
+                st.rerun()
+            if b5.button("➡️", help="Derecha fino (+2)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (min(1000, x_actual + paso_fino), y_actual)
+                st.rerun()
+            if b6.button("⏩", help="Derecha rápido (+12)", use_container_width=True):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (min(1000, x_actual + paso_grueso), y_actual)
+                st.rerun()
+
+            # Cursores manuales directos X e Y
+            nuevo_x_sl = st.slider(
+                f"Posición Horizontal X de {pt_activo} (0 = Izq, 1000 = Der)",
+                0, 1000, int(x_actual), key=f"manual_x_{pt_activo}"
+            )
+            nuevo_y_sl = st.slider(
+                f"Posición Vertical Y de {pt_activo} (0 = Arriba, 1000 = Abajo)",
+                0, 1000, int(y_actual), key=f"manual_y_{pt_activo}"
+            )
+            if (nuevo_x_sl, nuevo_y_sl) != (x_actual, y_actual):
+                st.session_state.puntos_cefa_a3d[pt_activo] = (nuevo_x_sl, nuevo_y_sl)
+                st.rerun()
+
+            # Botones Anterior / Siguiente punto para recorrer los 18 puntos cómodamente
+            col_prev, col_next = st.columns(2)
+            if col_prev.button("⬅️ Punto Anterior", use_container_width=True):
+                st.session_state.idx_punto_activo = (st.session_state.idx_punto_activo - 1) % len(ORDEN_PUNTOS_A3D)
+                st.rerun()
+            if col_next.button("Siguiente Punto ➡️", use_container_width=True):
+                st.session_state.idx_punto_activo = (st.session_state.idx_punto_activo + 1) % len(ORDEN_PUNTOS_A3D)
+                st.rerun()
+
+        # Tabla de resultados en vivo
+        st.markdown("---")
+        st.markdown("#### 📊 Tabla de Resultados en Tiempo Real — Método `A3D - DIAGNOSTICO 3D`")
+        resultados_a3d = calcular_analisis_a3d(st.session_state.puntos_cefa_a3d, modo_calibracion, valor_mm_cal)
+
+        tabla_md = "| Grupo | Medida | Valor Paciente | Norma (V9) | Tolerancia | Diagnóstico A3D |\n|---|---|---:|---:|---:|---|\n"
+        for r in resultados_a3d:
+            tabla_md += f"| **{r['Grupo']}** | **{r['Medida']}** | `{r['Valor']}` | {r['Norma']} | ± {r['Tol']} | {r['Diag']} |\n"
+        st.markdown(tabla_md)
+
+        if st.button("🧠 Generar Diagnóstico Biomecánico Angel Aligner con estos Puntos Cefalométricos", type="primary"):
             resumen_valores = "\n".join([
                 f"- {r['Grupo']} | {r['Medida']}: {r['Valor']} (Norma: {r['Norma']} ± {r['Tol']}) -> {r['Diag']}"
                 for r in resultados_a3d
             ])
             prompt_cefa_ia = f"""
-Analiza tanto visualmente esta imagen lateral derecha del modelo 3D de iOrtho como los resultados numéricos obtenidos en el análisis cefalométrico **A3D - DIAGNOSTICO 3D**:
+Analiza tanto visualmente esta imagen lateral derecha del modelo 3D de iOrtho como los resultados numéricos obtenidos en el análisis cefalométrico **A3D - DIAGNOSTICO 3D** tras el ajuste manual del doctor:
 
 {resumen_valores}
 
