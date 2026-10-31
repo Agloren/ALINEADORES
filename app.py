@@ -1,10 +1,12 @@
 import os
 import re
+import json
+import math
 import zipfile
 import fitz  # PyMuPDF
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+from PIL import Image, ImageDraw
 
 try:
     import pillow_heif
@@ -91,7 +93,6 @@ def construir_base_datos_visual():
             total_pags = 40
 
         if total_pags <= 42:
-            # Mapeo exacto para el PDF de 40 páginas
             extraer_pagina_y_recortes(pdf_cuaderno, 2, "05_Notas_Tips_Trucos_Zamora_Vignolo.jpg")
             extraer_pagina_y_recortes(pdf_cuaderno, 3, "05b_Indice_Ortodoncia_Interceptiva_Y_Protocolos.jpg")
             extraer_pagina_y_recortes(pdf_cuaderno, 8, "06a_Esquema_3D_Vias_Aereas_Senos_Raices.jpg")
@@ -244,16 +245,16 @@ if st.sidebar.button("🗑️ Limpiar memoria de consultas"):
     st.session_state.chat_angel = []
     st.session_state.ultima_prescripcion = ""
     st.session_state.ultima_auditoria = ""
+    st.session_state.ultimo_informe_cefa = ""
     st.rerun()
 
 lista_archivos_disponibles = ", ".join(archivos_graficos) if archivos_graficos else "Ninguna cargada aún"
 
 # ==============================================================================
 # 6. EL "LADRILLO" / FRAMEWORK BIOMECÁNICO COMPLETO DE ANGEL ALIGNER
-# (Integra Manuales, Artículos y Transcripciones de Crecimiento y Transversal)
 # ==============================================================================
 FRAMEWORK_BASE = """
-Actúa como un Ortodoncista Senior y Director Clínico experto en el sistema Angel Aligner (plataforma iOrtho), entrenado estrictamente con los protocolos clínicos, artículos científicos, cuadernos y cursos monográficos (Pacientes en Crecimiento y Problemas Transversales) de los Dres. David González Zamora y Romina Vignolo Lobato (Angel Academy).
+Actúa como un Ortodoncista Senior y Director Clínico experto en el sistema Angel Aligner (plataforma iOrtho), entrenado estrictamente con los protocolos clínicos, artículos científicos, cuadernos, método cefalométrico A3D (Diagnóstico 3D) y cursos monográficos (Pacientes en Crecimiento y Problemas Transversales) de los Dres. David González Zamora y Romina Vignolo Lobato (Angel Academy).
 
 REGLA CRÍTICA SOBRE DOCUMENTOS GRÁFICOS Y FOTOS DE REFERENCIA:
 Tienes conectada una base de datos visual en la carpeta `fotos_angel/`. Archivos disponibles actualmente: [__LISTA_ARCHIVOS__].
@@ -302,158 +303,102 @@ SIEMPRE que expliques un atache (especialmente el Atache DGZ), una línea de cor
     2) **3 días con `MasterControl`** (TPU más grueso y rígido, actúa como el arco de acero en brackets para expresar al 100% el torque radicular, movimientos en masa, expansiones y rotaciones difíciles).
   * Incluye alineadores y refinamientos ilimitados durante 6 años y 3 juegos de retenedores (de 0.76 mm en TPU MasterControl).
 - ANGEL ALIGNER KiD (K1 y K2) (`24_Protocolo_Angel_Kid_Notas_Romina.jpg` a `27_Tabla_Aditamentos_Angel_Kid.jpg`):
-  * **Filosofía de tratamiento temprano (RNO) en 2 Fases:** A una persona que no ve bien a ningún médico se le ocurriría esperar a los 18-20 años para ponerle gafas. El tratamiento precoz decayó por artículos de *Evidence-Based Practice* centrados solo en el pico prepuberal, pero tratar desde la dentición temporal/mixta temprana (idealmente entre los 5 y 7 años cuando empiezan a erupcionar los 1º molares permanentes) equilibra el crecimiento tridimensional (músculo, hueso y diente, incluyendo la profundidad de arcada que un disyuntor clásico no trata).
-  * **Diferencia entre el "K0" chino y el K1 europeo:** En China existía un "0" pasivo miofuncional sin movimiento dental porque a los técnicos les daba miedo expandir y distalar simultáneamente; gracias a los protocolos enviados por David y Romina a Vicky (ortodoncista jefa en Wuxi/Shanghái, donde trabajan con estructura jerárquica de Ortodoncista -> Técnico Senior -> Técnico Junior), en Europa el **K1** integra tanto la ortopedia miofuncional como el movimiento dental complejo en 3D.
+  * **Filosofía de tratamiento temprano (RNO) en 2 Fases:** Tratar desde la dentición temporal/mixta temprana (idealmente entre los 5 y 7 años cuando empiezan a erupcionar los 1º molares permanentes) equilibra el crecimiento tridimensional (músculo, hueso y diente, incluyendo la profundidad de arcada que un disyuntor clásico no trata).
   * **Ventaja única:** Permite tratar en **dentición de leche pura**, sin exigir que estén erupcionados ni el primer molar definitivo (6) ni ningún incisivo permanente.
   * **Truco económico y clínico:** Si al paciente le queda aunque sea **un solo diente de leche**, escanear y empezar como caso **KiD (K1)**.
-  * **K1:** Dura **2 años (24 meses)** con alineadores y refinamientos ilimitados (ampliaron 6 meses la garantía porque con 1 año en pleno recambio dentario te quedabas corto al escanear cada caída de diente). Desde el 1 de abril de 2025 el avance mandibular A6 y todos los aditamentos miofuncionales vienen incluidos de serie en el precio del K1. Conviene "estirar el chicle" y resolver todo lo posible dentro de los 2 años del K1.
-  * **K2:** Segunda fase para dentición definitiva (exclusiva para pacientes que hicieron un K1 previo; dan una **ventana de 10 años** para pasar de K1 a K2). Funcionalmente **el K2 es un Select Unlimited tal cual** (5 años de tratamientos/refinamientos ilimitados + 1 juego de retenedores) a precio muy reducido. En adolescentes en crecimiento que no vienen de un K1, elegir directamente Select o Pro según la complejidad.
+  * **K1:** Dura **2 años (24 meses)** con alineadores y refinamientos ilimitados + 1 juego de retenedores. Desde el 1 de abril de 2025 el avance mandibular A6 y todos los aditamentos miofuncionales vienen incluidos de serie en el precio del K1.
+  * **K2:** Segunda fase para dentición definitiva (exclusiva para pacientes que hicieron un K1 previo; ventana de 10 años para activarlo). Funcionalmente **el K2 es un Select Unlimited tal cual** (5 años de tratamientos/refinamientos ilimitados + 1 juego de retenedores) a precio reducido.
 - GESTIÓN DE CITAS Y ESCANEADO EN REFINAMIENTOS (`05_Notas_Tips_Trucos_Zamora_Vignolo.jpg`):
-  * David ve a los pacientes cada **2 meses**, entregando **6 alineadores por tanda**; por tanto, pide al técnico programar el IPR y acciones clínicas en los alineadores **7, 13, 19...**
+  * David ve a los pacientes cada **2 meses**, entregando **6 alineadores por tanda**; pide al técnico programar el IPR y acciones clínicas en los alineadores **7, 13, 19...**
   * **Escaneado con ataches puestos:** Para los refinamientos, tomar el escáner intraoral con los ataches puestos y evaluar después cuáles se quedan y cuáles se quitan.
-  * **El "Punto Rojo" en iOrtho:** Cuando en el software ves un **punto rojo** sobre un diente en un refinamiento, significa que tienes que quitar ese atache antiguo y cementar uno nuevo (evita tener que buscar las 7 diferencias etapa por etapa). **Ojo clínico:** si ves un punto rojo y por vestibular no ves atache, **mira siempre por palatino/lingual**, para que la higienista no meta el alineador nuevo encima de un atache o botón palatino antiguo sin quitarlo.
-  * **Vigilancia al caer un molar temporal y salir el premolar:** Cuando se cae el molar de leche y erupciona el premolar en el hueco bajo el alineador, vigilar estrechamente que el premolar no se sobreextruya o invada el hueco desajustando la férula.
+  * **El "Punto Rojo" en iOrtho:** Cuando en el software ves un **punto rojo** sobre un diente en un refinamiento, significa que tienes que quitar ese atache antiguo y cementar uno nuevo. **Ojo clínico:** si ves un punto rojo y por vestibular no ves atache, **mira siempre por palatino/lingual**, para no meter el alineador nuevo encima de un atache o botón palatino antiguo sin quitarlo.
 
 ====================================================================
 2. LÍNEA DE CORTE VARIABLE Y EL "KIT DE SUPERVIVENCIA" (`09_Lineas_De_Corte_Variable_3_Tipos.jpg`)
 ====================================================================
 1) **Línea de corte festoneada a nivel gingival (0 mm):** Más estética, indicada en pacientes periodontales o con recesiones.
 2) **Línea de corte recta alta (+2.5 mm por encima del margen gingival):**
-   * Da muchísimo más plástico haciendo empuje y retención. **Imprescindible en expansiones, distalizaciones, uso de máscara facial y aparatos funcionales (A6 / Clase II / Clase III)** (en niños con máscara o A6, Romina pide 100% línea de corte alta completa).
-   * **Regulación de ataches con línea alta:** Si pides línea de corte alta, debes **reducir/regular la retención de los ataches**; si dejas los mismos ataches ultrarretentivos con línea alta, el alineador entra pero el paciente no puede sacárselo.
-   * **En adultos:** A David no le gusta mantener la línea de corte alta más de **20 alineadores seguidos** en adultos. En sobremordidas donde se combine rampa anterior + expansión + *torque ridge* + atache de extrusión anterior, no poner la línea de corte alta al principio sino más adelante.
-   * **Dónde molesta realmente y el "Kit de Supervivencia" (Dra. Romina Vignolo):** Donde más molesta la línea de corte alta no es arriba, sino **abajo por lingual** (en la zona de prominencia alveolar o torus mandibular). Romina entrega a los pacientes un *"kit de supervivencia"* (tijerita de cortar uñas de punta fina, lima y ganchos extractores extra) para que recorten un filete mínimo del borde superior donde roce. Además, a muchas pacientes adultas les gusta más la línea alta porque al sonreír no se ve la raya del plástico sobre el diente.
+   * **Imprescindible en expansiones, distalizaciones, uso de máscara facial y aparatos funcionales (A6 / Clase II / Clase III)** (en niños con máscara o A6, Romina pide 100% línea de corte alta completa).
+   * **Regulación de ataches con línea alta:** Si pides línea de corte alta, debes **reducir/regular la retención de los ataches** para que el paciente pueda sacarse el alineador.
+   * **En adultos:** No mantenerla más de **20 alineadores seguidos** en adultos. Donde más molesta es **abajo por lingual** (zona de torus/prominencia alveolar); Romina entrega un *"kit de supervivencia"* (tijerita de uñas de punta fina, lima y ganchos extractores extra) para recortar el filo donde roce.
 3) **Línea de corte mixta (Festoneada en sector anterior + Recta alta a 2.5 mm en sector posterior):**
-   * **En niños en recambio incisivo:** Cuando están erupcionando los incisivos centrales o laterales, el volumen de la encía anterior engorda y cambia constantemente (algo imposible de calcular por el software). Pedir **línea mixta** evita roces e interferencias gingivales en el sector anterior mientras mantiene toda la fuerza expansiva y retentiva de la línea alta en los molares de leche posteriores.
+   * **En niños en recambio incisivo:** Evita roces en la encía anterior cambiante mientras mantiene toda la fuerza expansiva y retentiva de la línea alta en los molares posteriores.
    * **En adultos:** Ideal en fases largas de expansión cuando no se necesita un control crítico de torque en los incisivos anteriores.
 
 ====================================================================
 3. BIOMECÁNICA PROFUNDA DE ATACHES, ATACHE DGZ, ÁREAS DE PRESIÓN Y AUXILIARES
 ====================================================================
 A) FÍSICA DE LOS ATACHES ANGEL ALIGNER Y POR QUÉ VAN "AL REVÉS" QUE INVISALIGN/SPARK (`11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg`):
-- **Regla de oro en movimientos difíciles y en Expansiones:** Una expansión sin control provoca proinclinación de las coronas y pérdida de torque -> genera interferencias cuspídeas -> abre la mordida y crea un problema vertical y sagital. Por tanto, en toda expansión y movimiento difícil hacen falta buenos ataches (rectangulares o de retención) para dar **control radículo-vestibular** y evitar que el diente se escape del plástico.
-- **Pop-up 3D y Tallas en iOrtho:** Pulsando doble clic sobre un atache en iOrtho aparece el *pop-up* (con controles circunferenciales para rotación y lineales para extrusión) para modificar posición y perfil. En el atache de retención hay tallas S y M; en los rectangulares hay XS, S, M, L, M+, L+ (uno indica el ancho y otro el alto). En *Preferencias Clínicas* se puede pedir que pongan por defecto el atache más grande posible.
-- **Ataches en Niños ("Ladrillos" y Ataches de Colores):** Los niños se ponen los alineadores **mordiéndolos** en vez de insertarlos con los dedos; si pones un atache pequeño en un molar o canino de leche (que son cortos y expulsivos), el plástico entra mal y se desadapta. Romina pide **ataches enormes ("ladrillos") en niños** y utiliza **composites fluidos de colores con carga** (ej. *Voco Twinky Star*: morado, verde, amarillo, rosa, azul, naranja) en los dientes posteriores (acordándolo antes con los padres y dejando blancos los anteriores). Así los niños se motivan y se ve fácilmente si se desgasta algún fragmento del atache.
+- **Ataches en Niños ("Ladrillos" y Ataches de Colores):** Los niños se ponen los alineadores **mordiéndolos**; Romina pide **ataches enormes ("ladrillos") en niños** y utiliza **composites fluidos de colores con carga** (*Voco Twinky Star*) en sectores posteriores (hablándolo antes con los padres y dejando blancos los anteriores).
 - **¡ATENCIÓN! Por qué los ataches de Rotación y de Extrusión (HBO) tienen el bisel "al revés" que Invisalign/Spark (NO darles la vuelta):**
-  * Cuando David y Romina empezaron con Angel Aligner les daban la vuelta a todos los ataches pensando que venían mal puestos, hasta que estudiaron su física: en Invisalign y Spark la cara activa es la superficie larga; **en Angel Aligner la cara activa es el bisel más corto/estrecho** (el más perpendicular).
-  * **Física del Atache de Rotación:** En un diente redondo (canino/premolar) necesitamos una superficie plana lejos del centro de resistencia para crear una **cupla** (momento de rotación pura sin desplazamiento, donde Momento = Fuerza x Distancia). En el diseño de Angel Aligner, la inclinación del bisel corto hace que la línea de acción genere un brazo de palanca mucho mayor y un contramomento menor que el de Invisalign/Spark. Además, tiene **dos superficies activas en un solo atache**: una corrige la rotación y la otra sirve para retención (si está hacia gingival) o intrusión (si está hacia incisal).
-  * **Física del Atache de Extrusión (HBA / HBO):** Un incisivo no es retentivo (tiene forma de cuña convergente hacia incisal). Con el bisel largo clásico, por la 3ª Ley de Newton (acción-reacción), al empujar sobre la pendiente vestibular se produce un contramomento ("efecto cáliz/cuña") que **intruye** el incisivo en lugar de extruirlo. El bisel corto activo de Angel Aligner abraza el atache y descompone el vector de fuerzas logrando un **componente vertical muchísimo mayor que el horizontal**.
+  * En Invisalign y Spark la cara activa es la superficie larga; **en Angel Aligner la cara activa es el bisel más corto/estrecho** (el más perpendicular).
+  * **Física del Atache de Rotación:** Genera un brazo de palanca mucho mayor y tiene **dos superficies activas**: una corrige la rotación y la otra sirve para retención (si está hacia gingival) o intrusión (si está hacia incisal).
+  * **Física del Atache de Extrusión (HBA / HBO):** Con el bisel largo clásico, por la 3ª Ley de Newton se produce un contramomento ("efecto cáliz/cuña") que **intruye** el incisivo en lugar de extruirlo. El bisel corto activo de Angel Aligner logra un **componente vertical muchísimo mayor que el horizontal**.
   * **Doble posición del Atache HBO en la corona clínica:**
-    1) Si quieres **EXTRUSIÓN**: tiene que estar colocado muy **en el tercio incisal** (como sale por defecto) para que el contramomento sea mínimo.
-    2) Si quieres **CONTROL DE TORQUE**: tienes que **subirlo al CENTRO de la corona clínica** (combinado con *torque ridge* y línea de corte alta).
-  * **Truco de David para extruir incisivos inferiores:** Como la anchura mesiodistal del incisivo inferior es diminuta, el **atache convencional de retención** funciona fenomenal para extruirlos (o intruirlos) porque la inclinación de su superficie activa gingival es casi perpendicular.
-  * **La doble cara de la moneda (Colaboración):** Como la superficie activa de los ataches de Angel es más perpendicular y efectiva, si el paciente **no es colaborador** y el alineador desajusta un poco, pierde el enganche enseguida y toca parar, reescanear y pedir otro caso. Vigilar el ajuste en cada visita.
-  * **Manejo de interferencias oclusales con ataches:** Si un atache choca al morder, poner un levante de mordida sin cementar solo protege mientras lleva el alineador puesto, pero cuando el paciente se lo quita para comer chocará igual y despegará el atache; por tanto, si hay interferencia, bajar/empequeñecer el atache o reubicarlo en la corona para que libre la oclusión.
-- **Atache de Rotación + Extrusión / Retención en Premolares y Caninos:** Hacer primero la rotación y luego la extrusión; colocar atache de rotación por vestibular y atache de retención por palatino. Asegura que el alineador esté encajado y no pierda el control durante el giro.
+    1) En el **tercio incisal** (por defecto) = **EXTRUSIÓN**.
+    2) Subido al **CENTRO de la corona clínica** = **CONTROL DE TORQUE** (combinado con *torque ridge* y línea de corte alta).
+  * **Truco de David para extruir incisivos inferiores:** Usar el **atache convencional de retención** porque su superficie activa gingival es casi perpendicular y cabe en coronas estrechas.
 
 B) ATACHE DGZ ("Double Gripping Zag Attachment" — Zamora & Vignolo, 2025) (`01_Atache_DGZ_Geometria_Vectores.jpg`, `02_Atache_DGZ_Cierre_Diastema_MARPE.jpg`, `03_Atache_DGZ_Enderezamiento_Molar_Canino.jpg`, `04_Atache_DGZ_vs_Doble_Tip_Invisalign.jpg`, `11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg`):
-- **Origen y problema que resuelve (MARPE y Canino Inferior en Extracciones/Clase III):**
-  * En disyunciones de adultos con **MARPE**, no solo resiste la sutura palatina media sino sobre todo la **articulación pterigomaxilar**, haciendo que la disyunción se abra en abanico (arco en V con un gran diastema anterior). Al cerrar ese diastema con alineadores convencionales, las coronas se inclinan dejando las raíces en "tienda de campaña". Igualmente, en extracciones de premolares o Clases III, mover la raíz del **canino inferior** (la raíz más larga en la cortical más dura) es una pesadilla.
-  * El atache clásico de doble tip de Invisalign falla porque sus dos lóbulos están muy juntos (d = 4 mm), no tienen retención, solo juega con la anchura del diente y **ambos vectores de fuerza pasan por el mismo lado (incisal) del Centro de Resistencia (CR)**, exigiendo fuerzas altas (0.50 N) que desadaptan el plástico.
-- **Diseño biomecánico del Atache DGZ:** David rotó 90° cada lóbulo y aprovechó tanto la anchura mesiodistal como la altura incisogingival de la corona (dejando 1 mm de margen en los 4 bordes):
-  * **Lóbulo Gingival (Talla M):** Colocado en mesial-gingival (a 1 mm de la encía), aplica una fuerza vertical hacia incisal (F1) y además asegura una **gran retención cervical**.
-  * **Lóbulo Incisal (Talla S):** Colocado en el extremo opuesto distal-incisal (a 1 mm del borde incisal), aplica una fuerza vertical opuesta hacia gingival (F2).
-  * **Ventaja física exacta:** La distancia diagonal entre ambos lóbulos sube a **d = 10.7 mm** y los dos vectores de fuerza pasan **a un lado y a otro (mesial y distal) del Centro de Resistencia**, exactamente igual que cuando un bracket endereza una raíz con un arco 0.012. Para lograr el momento de 2 N·mm (1° de tip) solo necesita **0.19 N** de fuerza (menos de la mitad que el doble tip clásico), logrando movimiento radicular puro sin traslación indeseada.
-- **Indicaciones del Atache DGZ (pedirlo siempre en lugar del doble tip o rectangular):**
-  1) Cierre de diastemas interincisivos post-MARPE (evita poner *power arms*).
-  2) Control de tip radicular en caninos (especialmente el canino inferior en Clase III o extracciones), premolares y molares.
-  3) Enderezamiento de molares inclinados (*molar straightening*).
-  * **Limitación anatómica:** No cabe en **incisivos inferiores** por su reducido ancho y alto coronal (en molares grandes en casos de extracción A7 también se pueden usar dos ataches rectangulares verticales).
+- **Diseño biomecánico:** Dos lóbulos separados en diagonal (respetando 1 mm de margen en los 4 bordes): **Lóbulo Gingival (Talla M)** en mesial-gingival (fuerza hacia incisal F1 + retención cervical) y **Lóbulo Incisal (Talla S)** en distal-incisal (fuerza hacia gingival F2).
+- **Ventaja física exacta:** La distancia diagonal sube a **d = 10.7 mm** (frente a 4 mm del doble tip clásico) y los dos vectores pasan **a ambos lados del Centro de Resistencia**, requiriendo solo **0.19 N** (frente a 0.50 N) para lograr 2 N·mm de momento (1° de tip).
+- **Indicaciones:** Cierre de diastemas post-MARPE (raíces en "tienda de campaña"), control de tip radicular en caninos (especialmente caninos inferiores), premolares y enderezamiento molar. **Limitación:** No cabe en **incisivos inferiores**.
 
-C) ÁREAS DE PRESIÓN, RECORTES Y COMPENSADORES DE ERUPCIÓN (`13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg`, `14_Tabla_4_Recortes_Elasticos_Boton_Bracket.jpg`):
+C) ÁREAS DE PRESIÓN, RECORTES, COMPENSADORES ACTIVOS Y LEVANTES (`13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg`, `14_Tabla_4_Recortes_Elasticos_Boton_Bracket.jpg`, `15_Tabla_5_Levantes_De_Mordida_Bite_Turbos.jpg`):
 - **Área de presión de torque (Torque Ridge):** En incisivos y caninos para torque radiculolingual; lleva HBO en el centro del diente y línea de corte alta.
-- **Área de presión de intrusión:** En incisivos para intrusiones **> 2.5 mm** (acompañar siempre de ataches de retención en dientes vecinos, ej. en 12 y 13 para intruir 11 y 21).
-- **Área de presión de rotación (Crestas de rotación):** En incisivos y caninos para rotaciones entre **12° y 25°** (velocidad máxima: **Pro = 2.2°/etapa**, **Select = 1.8°/etapa**). En incisivos van en par (bucal y palatino) o solo en palatino si hay atache vestibular (bajo solicitud manual pueden ir en la misma cara dejando >=1 mm de separación).
-- **Recorte para bracket/tubo:** Para usar arcos seccionales cuando queremos mesializar molares.
-- **Compensadores de erupción Activos vs. Pasivos (con CBCT):**
-  * En otras marcas el compensador siempre se coloca de forma pasiva en la línea de la arcada. En Angel Aligner, si envías el **CBCT**, puedes pedir al técnico que coloque el compensador **donde esté realmente el diente ectópico/palatinizado** y hacerlo **ACTIVO**: el compensador va empujando y acompañando poco a poco al diente hacia la arcada conforme erupciona, e incluso permite hacerle un recorte para botón en el propio compensador.
-  * **Momento de colocar el Tongue Crib ("el pinchito") en recambio incisivo:** Si los incisivos definitivos apenas han asomado en un niño con mordida abierta por interposición lingual, Romina prefiere esperar un par de meses a que erupcionen un poco más antes de escanear (en lugar de llenarlo de compensadores), porque así ya se pueden cementar buenos ataches de retención en los incisivos y el software ya deja colocar el *Tongue Crib* ("pinchito" lingual).
-  * En casos de **caninos incluidos quirúrgicos**: suturar el cemento quirúrgico tras la exposición para dejar abierto el acceso al diente, pedir muchos alineadores pasivos y colocar **barras de refuerzo** en lugar de compensadores grandes para evitar interferencias.
+- **Área de presión de intrusión:** En incisivos para intrusiones **> 2.5 mm** (con ataches de retención en 12 y 13 para intruir 11 y 21).
+- **Área de presión de rotación:** En incisivos y caninos para rotaciones entre **12° y 25°** (velocidad máx: **Pro = 2.2°/etapa**, **Select = 1.8°/etapa**).
+- **Compensadores de erupción Activos con CBCT:** Si envías el CBCT, puedes pedir el compensador **activo** en la posición ectópica/palatina real del diente para que lo empuje hacia la arcada mientras erupciona (e incluso ponerle recorte para botón). En **caninos incluidos quirúrgicos**: suturar el cemento quirúrgico dejando acceso abierto, pedir muchos alineadores pasivos y poner **barras de refuerzo** en vez de compensadores grandes.
+- **Levantes de Mordida Anteriores (Curvos adaptativos, de 3 a 3, NUNCA se rellenan de composite):**
+  * **¡REGLA DE ORO EN CÉNTRICA!:** Verificar antes de aprobar el setup que el paciente tenga un resalte suficientemente corto para que **en céntrica NO se quede atrapado mordiendo por detrás del levante**. Si hay mucho resalte inicial, pedir los levantes anteriores **a partir de la etapa X** tras reducir el resalte con elásticos.
+  * **Levante anterior inclinado:** Para Clase II con resalte < 3 mm o en Fase II post-A6.
+- **Levantes Posteriores ("Bite Bubbles") y el "Salto Virtual Vertical" en Dolicofaciales:**
+  * Nunca se rellenan de composite. En niños verticales con mordida abierta, Romina le pide al paciente que **apriete y chafe las burbujas posteriores cada semana** para activar los maseteros, y pide al técnico **nivelar el plano superior e inferior por separado aplicando un "salto virtual vertical"** (anterorrotación mandibular sin extruir incisivos).
 
-D) LEVANTES DE MORDIDA: ANTERIORES, INCLINADOS, CLASE III Y "BITE BUBBLES" POSTERIORES (`15_Tabla_5_Levantes_De_Mordida_Bite_Turbos.jpg`):
-- **Diseños de levantes anteriores:**
-  * *Rectangulares/Cuadrados:* No son adaptativos; solo se piden si el doctor quiere rellenarlos/cementarlos con composite en boca.
-  * *Curvos/Redondeados (Adaptativos):* Cambian automáticamente su angulación con el diente según se corrige la maloclusión. **David y Romina NUNCA rellenan los levantes de composite**. En pacientes con sobremordida, su estándar es poner **levantes anteriores adaptativos de 3 a 3 desde el primer día**.
-  * *Levante anterior inclinado (exclusivo Angel):* Tiene rampa con pendiente (como una pista anterior de Planas) que obliga a la mandíbula a ir hacia adelante en Clases II con resalte < 3 mm o en la Fase II de estabilización tras retirar los bloques A6.
-  * **¡REGLA DE ORO ANTES DE APROBAR UN LEVANTE ANTERIOR EN EL SETUP!:** Comprobar que el paciente tiene un resalte suficientemente corto para ocluir sobre el levante y que **en relación céntrica NO sea capaz de quedarse atrapado por detrás del levante** (David lo vivió con una paciente y es un desastre clínico porque le empotra la mandíbula hacia atrás). Si tiene demasiado resalte inicial, pedir al técnico que coloque el levante anterior **a partir de la etapa X**, cuando ya se haya reducido parte del resalte con elásticos.
-  * *Levantes anteriores adaptativos en Clase III (salto de mordida cruzada anterior):* En Clases III compensables donde hay que saltar la mordida anterior con elásticos, Angel dispone de levantes anteriores adaptativos que van subiendo hacia el borde incisal hasta que salta la mordida. **Nunca poner levantes posteriores en una Clase III donde quieras aplanar la curva de Spee**, porque intruirán los molares posteriores (y más aún con el material rígido del Pro) dejando una mordida abierta posterior que cuesta meses revertir.
-- **Levantes Posteriores ("Bite Bubbles" / Cabezas de champiñón) y la Filosofía Postural de Romina en Pacientes Verticales/Dolicofaciales:**
-  * Se piden siempre al técnico (no tienen pop-up manual) y **jamás se rellenan de composite**.
-  * *En adultos / mordidas cruzadas:* Ponerlos solo durante las etapas estrictamente necesarias para desocluir y descruzar, retirándolos enseguida para no intruir molares ni abrir la mordida posterior (especialmente en Pro).
-  * *En niños verticales / mordida abierta anterior (Protocolo Dra. Romina Vignolo):* Posturológicamente, en un paciente vertical es un sacrilegio aumentar pasivamente la dimensión vertical con un bloque rígido porque aumenta el tono muscular posterior y lo hace aún más inestable. Lo que hay que cambiar es el **engrama muscular** activando los maseteros: Romina coloca los *bite bubbles* huecos y **le pide al niño que los apriete todos los días hasta chafarlos**; a la semana siguiente cambia de alineador, tiene una burbuja nueva y vuelve a apretarla, entrenando la musculatura masticatoria.
-  * **El "Salto Virtual Vertical" en el Setup de Mordida Abierta:** Para que el técnico no cierre la mordida abierta extruyendo incisivos artificialmente, Romina pide **nivelar el plano oclusal superior y nivelar el plano oclusal inferior de forma independiente, solicitando un "salto virtual vertical"** que simule la anterorrotación natural en bisagra de la mandíbula al corregir los planos.
-
-E) ANGELBUTTON™ Y ANGEL HOOK: BIOMECÁNICA Y PELIGRO DE SOBRECORRECCIÓN (`16_Detalle_Clinico_AngelButton_TAD.jpg` a `19_Figura_5_Angel_Hook_Protraccion_CIII.jpg`):
-- **Diferencia física entre AngelButton y Botón Cementado al Diente:**
-  * El **AngelButton** es del mismo TPU rígido del Pro y soporta **500 g**. Al tirar de un AngelButton, **toda la fuerza se reparte en bloque por toda la arcada** a través del plástico. En cambio, al tirar de un botón cementado directo al diente, la fuerza se disipa en la raíz de ese diente (tiende a extruirlo/inclinarse) y apenas se transmite a los vecinos por los puntos de contacto.
-  * En un paciente braquifacial de Clase II donde queremos abrir la mordida extruyendo el molar inferior: combinamos **AngelButton en el canino superior** (frena y distaliza toda la arcada superior en bloque) con **recorte para botón cementado directo en el 6 inferior** (para que el elástico extruya el molar inferior), poniendo siempre **ataches de retención en el 7 y en el 5 inferiores**.
-- **¡ALERTA CLÍNICA CON LOS ELÁSTICOS EN ANGELBUTTONS!:** Como el AngelButton transmite la fuerza a toda la arcada de forma tan eficiente y vemos al paciente cada 2 meses, si el paciente usa los elásticos todo el día **los casos de Clase II se pasan a Clase III quirúrgicas y las Clases III se pasan a Clase II** con suma facilidad. Es obligatorio sacar fotos y supervisar la oclusión en cada cita (y no delegarlo sin control) para parar o invertir la goma a tiempo.
-- **Truco si salta el elástico en vectores hacia adelante (Máscara Facial / Clase III):** El AngelButton tiene algo menos de retención si tiras con un vector muy horizontal hacia adelante entre lateral y canino; para que no salte la goma, **cruzar el elástico de un punto a otro** o pedir el **Angel Hook**.
-- **Mecánicas combinadas (Distalización + Tracción de canino alto con AngelButton):** El alineador abre el espacio mientras el elástico extruye el canino y asienta el plástico; pero **no pidas el AngelButton en las primeras etapas si aún no vas a enganchar el elástico** hasta que se abra hueco, porque los "cuernitos" vacíos sin elástico rozan y molestan al paciente.
-- **Regla obligatoria en Mordida Cruzada con AngelButton:** Siempre que se usen AngelButtons para elásticos cruzados (o en la arcada inferior por lingual), colocar **atache en palatino/vestibular opuesto para retención**, evitando que el elástico desinserte el alineador.
+D) ANGELBUTTON™ Y PELIGRO DE SOBRECORRECCIÓN (`16_Detalle_Clinico_AngelButton_TAD.jpg` a `19_Figura_5_Angel_Hook_Protraccion_CIII.jpg`):
+- El **AngelButton** transmite la fuerza del elástico a toda la arcada en bloque (hasta 500 g), mientras que el botón cementado al diente concentra la fuerza en su raíz (extruyéndolo).
+- **¡ALERTA EN REVISIONES!:** Si el paciente colabora mucho con elásticos en AngelButtons, entre dos citas (2 meses) **las Clases II se pasan a Clases III quirúrgicas y las Clases III a Clases II**. Tomar fotos y controlar siempre.
+- En mordidas cruzadas con AngelButtons, colocar siempre **atache en palatino/lingual opuesto para retención**.
 
 ====================================================================
-4. PROTOCOLOS ESPECÍFICOS DE CRECIMIENTO, TRANSVERSAL, CLASE II Y CLASE III
+4. PROTOCOLOS ESPECÍFICOS DE CRECIMIENTO, TRANSVERSAL, CLASE II (A6/A8) Y CLASE III
 ====================================================================
-A) ETIOLOGÍA POSTURAL, PODAL, FUNCIONAL Y TRATAMIENTO DE LAS MORDIDAS CRUZADAS (RNO / LEYES DE PLANAS) (`24_Protocolo_Angel_Kid_Notas_Romina.jpg`, `26_Esquema_Angel_Kid_Posicionador_Y_Habitos.jpg`):
-- **Factores etiológicos y posturales desde el nacimiento:**
-  1) *Tortícolis congénita o plagiocefalia:* Partos instrumentales con fórceps o ventosa que contracturan el esternocleidomastoideo (ECM) de un lado, inclinando la cabeza y desviando la mandíbula hacia ese lado.
-  2) *Falta de gateo y cadenas musculares:* Al no dormir boca abajo, muchos bebés no activan el reflejo de extensión cervical ni hacen gateo cruzado ("gatean con el culete" o pasan directo a ponerse de pie). El gateo cruzado es el que activa las cadenas cruzadas anteriores (*core*); sin él, quedan con hipertono de la cadena posterior.
-     - *Correlaciones posturales y podales:* Hiperextensión de rodillas + pies planos + cabeza adelantada tiende a **Clase II**; hiperlordosis + rodillas flexionadas + pies cavos tiende a **Clase III**. Un pie plano aumentado se correlaciona con dimensión vertical bucal aumentada; el **retropié valgo** (hacia adentro, cadena de cierre) disminuye la dimensión vertical bucal y simula una **falsa pierna corta** de ese lado, mientras que el **retropié varo** (cadena de apertura) la aumenta.
-     - *Test de los rollitos de algodón (Meersseman):* Permite comprobar cómo al desprogramar la oclusión se centra el tono postural y se rectifica la lordosis/escoliosis cervical cuando la boca es el captor descendente.
-  3) *Dormir boca abajo o sobre la mano/hombro (90% de la población):* Meter el hombro o la mano debajo de la cara al dormir comprime el maxilar de ese lado y acorta la musculatura homolateral, atrayendo la mandíbula y el hueso hioides hacia ese lado. El verdadero lado preferente de dormir de un niño es **el lado en el que lo encuentras durmiendo por la mañana al ir a despertarlo**.
-     - *Truco clínico de Romina para cambiar el lado de dormir en niños:* Los niños duermen mirando hacia lo que les da seguridad (los padres, la puerta, la ventana o su hermano). **Pon la almohada a los pies de la cama** (o gira la cuna en bebés; si son dos hermanos que duermen mirándose, pon las dos almohadas a los pies de ambas camas) para que sigan mirando hacia su zona de confort pero apoyando el lado contrario de la cara.
-  4) *Respiración oral y alerta sobre los "Tapes" (esparadrapos bucales):* Antes de mandar esparadrapo bucal nocturno, verifica con el ORL que el paciente tiene **paso de aire nasal real** (cuidado con los cornetes hipertróficos aunque en la telerradiografía se vea buena vía aérea faríngea posterior); tapar la boca sin paso nasal real provoca apneas infantiles y de adulto.
-- **Por qué no se cumple la 1ª Ley de Planas en las Mordidas Cruzadas y la Lengua Torsional:**
-  * En un niño muy pequeño la mordida cruzada empieza por una prematuridad dental (si aún muerde indistintamente a derecha e izquierda, basta un **tallado selectivo**). Una vez instaurada, a diferencia de una boca normal donde el maxilar se expande hacia el lado de trabajo, en la **mordida cruzada** el maxilar superior queda atrapado por dentro del inferior y trabaja al revés: **el lado de mínima dimensión vertical (lado cruzado/de trabajo) se queda comprimido en el maxilar** (signo patognomónico en la panorámica), con un cóndilo más redondeado, rama más corta y movimiento puramente de rotación con trayectoria condílea muy vertical (tendencia a Clase II); mientras que el lado de balanceo tiene el cóndilo más alargado, rama más larga y movimiento de rotación+traslación (tendencia a Clase I/III). (Un diente incluido unilateral actúa posturalmente casi como una agenesia comprimiendo ese lado).
-  * **Volumetría torsional de la lengua:** En una mordida cruzada unilateral la lengua es asimétrica en 3D: en el lado de masticación es **ancha y baja**, y en el lado de balanceo es **estrecha y alargada**. Si no se rehabilita posicional y tridimensionalmente con logopeda y posicionador lingual (quitándose el alineador en el logopeda para ejercitar y poniéndoselo después como estímulo), la lengua provocará recidiva.
-- **Protocolo de Expansión Asimétrica en Mordida Cruzada Unilateral (Zamora & Vignolo):**
-  * **ERROR A EVITAR:** Nunca sobreexpandir primero el lado sano para hacer anclaje recíproco, porque dejas al niño durante meses sin contacto oclusal ni por la derecha ni por la izquierda y no puede comer.
-  * **SECUENCIA CORRECTA EN 2 ETAPAS:**
-    1) **Etapa 1 (Simetrizar):** Pedir al técnico **expansión unilateral exclusiva del lado comprimido** hasta dejarlo totalmente simétrico con el lado contralateral sano (podemos ayudarnos poniendo 1 AngelButton por palatino y 2 por vestibular con ataches de retención).
-    2) **Etapa 2 (Expansión bilateral, Arcada Cuadrada y Líneas Medias 100% Centradas):** Una vez que ambas hemiarcadas son simétricas, continuar con **expansión bilateral simétrica** dándole una **forma de arcada cuadrada** para permitir el frote oclusal bilateral. En niños es innegociable terminar con **molares y caninos a la misma altura y las líneas medias superior e inferior centradas respecto a su base ósea y entre sí** (una línea media desviada en un niño significa que mantiene dos trayectorias condíleas distintas y recidivará).
-    3) **Rehabilitación masticatoria de 2 años:** Pedir activamente al paciente que **coma por el lado contrario al que comía (el lado no cruzado) durante aproximadamente 2 años**, que es el tiempo biológico que tarda en remodelarse por completo la trayectoria condílea (controlando FMA y ángulos goniacos), antes de pasar a una masticación bilateral alternante.
-
-B) DISCREPANCIA ÓSEO-DENTARIA EN DENTICIÓN MIXTA: "EXPANSIÓN CENTRÍFUGA" (SUSTITUTO DEL 2x4 / D-GAINER) (`24_Protocolo_Angel_Kid_Notas_Romina.jpg`):
-- **Ventaja frente al clásico 2x4 / D-Gainer / Utilitario:** El 2x4 solo expandía y distalaba el primer molar y proinclinaba los incisivos (perdiendo el control de torque), dejando los 3 dientes intermedios de cada cuadrante (canino y molares de leche) sin desarrollar transversalmente. Con alineadores logramos un desarrollo tridimensional completo ("expansión centrífuga": **distalar + expandir + protruir simultáneamente** con control de torque y levante anterior) en unos 26 alineadores (~6.5 meses).
-- **Secuencia biomecánica exacta en dentición mixta:**
-  1) **Expandir y distalar los primeros molares (6s) a la vez** (combinado con levante de mordida anterior si hay sobremordida).
-     - *Regla de oro de coordinación sagital al distalar arriba y abajo:* Si el lado está en **Clase I**, la distalización del molar superior e inferior tiene que ir **acompasada a la par** (el molar inferior nunca puede ganarle la posición al superior para no crear una interferencia y perder el anclaje). Si el lado está en **Clase II**, empezar distalando primero el molar superior y, cuando ya alcance relación de Clase I con el inferior, distalar los dos juntos en Clase I.
-  2) **Una vez distalado el 6, distalar y expandir los molares de leche.**
-     - *Seguridad radicular:* Distalar molares de leche NO daña ni deforma los gérmenes de los premolares definitivos (las raíces temporales acompañan y reconducen favorablemente la erupción del premolar) ni impacta los segundos molares (los 7s están en un plano más hacia vestibular y erupcionan sin problema, a diferencia de las antiguas bandas molares que sí los atascaban).
-  3) **Ordenar el apiñamiento incisivo anterior dejando SIEMPRE 0.5 mm de espacio en mesial y 0.5 mm en distal de los caninos de leche (Espacio de Primate):** Incluir siempre esta instrucción en la prescripción inicial para dejar la arcada preparada para el recambio.
-
-C) AVANCE MANDIBULAR CON PROTOCOLO A6 EN CLASE II (`20_Protocolo_A6_Reglas_Avance_Mandibular.jpg`, `21_Figura_6_Avance_Mandibular_A6_Bloques.jpg`, `33_Comparativa_Bloques_A6_Rectos_vs_Inclinados.jpg`, `35_Opciones_Elasticos_Clase_II_Con_A6.jpg`):
-- **Ventana ideal:** Primer pico de crecimiento entre los **5 y 7 años** (segunda infancia, cuando empiezan a salir los 6s, maduración vertebral fin de C1 a fin de C2) o en el estirón prepuberal (CS3-CS4). Permite expandir de forma simétrica ("efecto Planas"), nivelar e impulsar el crecimiento de la rama mandibular todo a la vez.
-- **Por qué el avance debe ser de al menos 4 mm y NO a micro-saltitos:** En las aletas clásicas de otras marcas se hacía avance incremental en micro-saltitos porque las aletas eran bajas; pero si no aumentas lo suficiente la separación vertical entre arcadas, **no permites que el cóndilo se separe de la cavidad glenoidea** y la rama mandibular no crece (solo haces una reposición funcional).
-  * **Regla de magnitud del salto en A6:** Máximo **7 mm**. Si en un niño muy pequeño (5-6 años) con casi 10 mm de resalte no quieres hacer los 7 mm de golpe porque no sabe posicionarse y aplasta el bloque, **dividir el salto en DOS partes grandes (nunca en micro-saltitos): hacer como mínimo 4 mm en el primer salto** (altura mínima para desalojar el cóndilo de la cavidad glenoidea) y luego una segunda fase con lo que falte.
-- **¡REGLA CRÍTICA DE DISEÑO: SIEMPRE BLOQUES TIPO 1 (RECTOS) Y PROHIBIDO EL TIPO 2 (INCLINADO)!:**
-  * Jamás elegir el bloque inclinado (Tipo 2): su superficie de apoyo es demasiado pequeña, cuando el niño relaja la musculatura se queda enganchado por detrás del pico y muerde mucho peor que al principio.
-  * Pedir **SIEMPRE el Bloque Tipo 1 (más rectangular/recto, tipo Twin-Block)** acompañado **sí o sí de AngelButtons** para poner un **elástico suave de posicionamiento** (por la noche en ambos lados, y **también por la tarde en el lado que tenga más Clase II si es asimétrica** para estimular el estiramiento del lado corto).
-- **¡REGLA CRÍTICA DE POSICIÓN: EL BLOQUE SUPERIOR DEBE CUBRIR COMO MÍNIMO EL PRIMER MOLAR INFERIOR DEFINITIVO (6)!:**
-  * En los pacientes de Clase II la curva de Spee está aumentada porque el incisivo inferior se ha extruido al no tener contacto anterior, no porque el molar esté intruido. Si dejas el bloque A6 en la zona media (como lo pone el software casi por defecto), el bloque presiona e **intruye los molares posteriores**, impidiendo además que los incisivos anteriores se intruyan y dejando una **mordida abierta posterior enorme**.
-  * **Instrucción obligatoria al técnico CAD:** Escribir al técnico hasta que haga caso que *"en dentición mixta el bloque A6 Tipo 1 debe ir lo más posterior posible y el bloque superior tiene que cubrir como mínimo el primer molar inferior definitivo (6)"*. (En adolescentes donde ya se perdió el pico de crecimiento y sí se busque extruir el molar inferior, se puede poner un botón cementado directo al 6 inferior con ataches de retención en 7 y 5).
-- **Las 2 Fases de todo Avance A6 (Consolidación de 9 meses):**
-  * En 20 alineadores no llegas a los **9 meses** necesarios para que el cambio muscular pase a ser remodelado esquelético. Por tanto, tras la **Fase I (activa con los bloques A6, usando dos juegos de material flexible por etapa: 5 días + 5 días)**, hay que hacer siempre una **Fase II de mantenimiento/estabilización** colocando **levantes de mordida anteriores inclinados** + elásticos nocturnos de Clase II mientras se gana profundidad de arcada (distalizando/recambiando).
-
-D) CLASE III EN CRECIMIENTO Y EN ADULTOS (`19_Figura_5_Angel_Hook_Protraccion_CIII.jpg`, `36_Caso_Clase_III_Pro_Distalizacion_A8_Setup.jpg`, `37_Caso_Clase_III_Pro_Evolucion_Intraoral.jpg`):
-- **En niños con Clase III (Máscara Facial):** La tracción anterior con máscara facial sobre alineadores con **línea de corte alta (2.5 mm)** y **AngelButtons / Angel Hook** funciona de forma espectacular en 4 meses, permitiendo combinar al mismo tiempo la corrección de una mordida cruzada unilateral (expandiendo primero el lado comprimido).
-- **En adultos jóvenes (Compensación con Angel Aligner Pro y Protocolo A8):** Distalización secuencial de los cuadrantes 3 y 4 (protocolo A8), intrusión anteroinferior para aplanar curva de Spee, uso de **Atache DGZ** o doble tip en caninos inferiores (33 y 43) controlando con el CBCT (IRS) que sus raíces entren en el hueso cortical, IPR anterior según Bolton y **elásticos de Clase III (3/16", 4.5 oz) de AngelButton a AngelButton**.
+- **Mordida Cruzada Unilateral y Posturología (RNO / Planas):**
+  * En mordida cruzada no se cumple la 1ª Ley de Planas: el lado de trabajo (menor dimensión vertical) queda atrapado y comprimido en el maxilar, y la lengua sufre una **deformación torsional** (ancha y baja en el lado cruzado; estrecha y larga en el de balanceo).
+  * **Secuencia obligatoria en 2 etapas:** 1º Expansión **unilateral exclusiva del lado comprimido** hasta simetrizar con el lado sano -> 2º Expansión **bilateral simétrica** con forma de **arcada cuadrada** y líneas medias 100% centradas.
+  * **Rehabilitación:** Indicar al paciente que **coma por el lado contrario durante ~2 años** (tiempo necesario para remodelar la trayectoria condílea) y poner la **almohada a los pies de la cama** para cambiar el lado de apoyo facial al dormir. En respiradores orales, verificar con ORL paso nasal real (cornetes) antes de usar *mouth tapes*.
+- **Discrepancia Mixta ("Expansión Centrífuga" — Sustituto del 2x4 / D-Gainer):**
+  * 1º Expandir y distalar los primeros molares (6s) a la vez (si es Clase I, distalar 6 superior e inferior **acompasados a la par**; si es Clase II, primero el superior hasta Clase I y luego juntos) -> 2º Distalar molares de leche -> 3º Alinear incisivos dejando **0.5 mm de espacio en mesial y distal de los caninos de leche (espacio de primate)**.
+- **Avance Mandibular con Protocolo A6 en Clase II:**
+  * **Salto mínimo de 4 mm y máximo de 7 mm** (nunca micro-saltitos porque no separan el cóndilo de la cavidad glenoidea; si tiene ~10 mm en niños muy pequeños, dividir en 2 saltos grandes: primero 4 mm y luego el resto).
+  * **SIEMPRE BLOQUES TIPO 1 (RECTOS) y prohibido al 200% el Tipo 2 (inclinado)**.
+  * **REGLA CRÍTICA DE POSICIÓN:** Escribir al técnico que **el bloque superior cubra como mínimo el primer molar inferior definitivo (6)** para no intruir los molares ni crear mordida abierta posterior.
+  * Acompañar de AngelButtons con elásticos suaves (por la noche en ambos lados, y **por la tarde en el lado más corto si la Clase II es asimétrica**). Completar **9 meses** entre Fase I (bloques A6, cambio 5+5 días) y Fase II (levante anterior inclinado + elásticos nocturnos).
 
 ====================================================================
-5. REGLAS DE AUDITORÍA DE CAPTURAS DE iORTHO (TABLA TM, BOLTON, OB/OJ, ARCADA, MovE)
+5. MÉTODO CEFALOMÉTRICO "A3D - DIAGNOSTICO 3D" SOBRE EL MODELO 3D DE iORTHO
 ====================================================================
-Al auditar las capturas de pantalla de iOrtho subidas por el doctor:
-1) **Bolton:** Identificar si el exceso (ej. 3-3 o 6-6) se debe a ausencias dentarias (`—` en la tabla M-D, como falta del 42, 17, 37) o desproporción anatómica, y proponer cómo compensarlo (IPR, reconstrucción o cierre con Atache DGZ).
-2) **Gráfico MovE (Secuenciación):** Verificar número de etapas activas, ausencias (`X`), cementado de ataches (puntos rojos, recordando mirar siempre por palatino/lingual) y etapas de IPR (rombos azules). Si todos los dientes se mueven en bloque de la etapa 1 a la final en un adulto, exigir secuenciación (ej. patrón en V en distalizaciones o desrotar/expandir antes de retruir) y **adelantar el IPR a las primeras etapas o a las citas de los alineadores 7, 13, 19...**
-3) **Tabla TM (Corona, Centro de resistencia y Ápice radicular):**
-   - Detectar todas las celdas marcadas en amarillo/rojo Y las celdas en blanco que superen límites predecibles:
-     * **Rotaciones >15° en caninos/premolares o >20° en incisivos:** exigir atache de rotación (recordando que en Angel el bisel corto es el activo y no hay que girarlo, o rotación vestibular + retención palatina), área de presión de rotación (en incisivos/caninos entre 12° y 25° respetando velocidad máx 2.2°/etapa en Pro o 1.8°/etapa en Select) y abrir espacio previo.
-     * **Tip / Angulación >4-5° o cierre de espacios de extracción/agenesia/MARPE:** exigir **Atache DGZ (talla M en gingival y S en incisal)**, salvo en incisivos inferiores donde no cabe por tamaño.
-     * **Torque >8-10° (`La`/`Li`):** exigir área de presión de torque (*torque ridge*) + **atache HBO subido al CENTRO de la corona clínica** + línea de corte alta a 2.5 mm.
-     * **Extrusión (`E`) vs Intrusión (`I`):** Para extrusión en incisivos superiores poner HBO en el tercio incisal; en incisivos inferiores usar el atache convencional de retención. Para intrusión poner ataches de retención en dientes vecinos (ej. en 12 y 13 para intruir 11 y 21) y área de presión de intrusión si supera 2.5 mm.
-4) **Anchura de la Arcada (`3-3`, `4-4`, `5-5`, `6-6`):** Alertar si hay estrechamiento/colapso severo de la distancia intercanina (`3-3` muy negativo, ej. `-4.3 mm`) o falta de ataches rectangulares/retención en expansiones que pueda causar proinclinación coronal y pérdida de torque.
-5) **OB/OJ (Sobremordida y Resalte):** Si la sobremordida (OB) objetivo sube cerca de `3.0 mm` al retruir o cerrar espacios, alertar del riesgo de mordida profunda secundaria y pedir **levantes de mordida anteriores adaptativos (curvos, sin rellenar) de 3 a 3**, comprobando que con el resalte inicial (OJ) el paciente no quede atrapado por detrás del levante en céntrica.
+El método `A3D - DIAGNOSTICO 3D` evalúa la vista lateral derecha del modelo 3D (IRS) de iOrtho en 3 grupos:
+- **Grupo 01 - CLASE ESQUELÉTICA:**
+  1) `Wits` (`DLNG_DR`: proyección de `B` y `A` sobre el plano oclusal `OP-OA`): Norma = `0.0 mm` (±1.0). `< -1.0` = `CIII` | `-1.0 a +1.0` = `CI` | `> +1.0` = `CII`.
+  2) `Dist A-Pog (_|_ FR)` (`DLNG_DR`: distancia entre `Pg` y `A` proyectada sobre Frankfort `Po-Or`): Norma = `6.0 mm` (±2.0). `< 4.0` = `CIII` | `4.0 a 8.0` = `CI` | `> 8.0` = `CII`.
+- **Grupo 02 - DIMENSIÓN VERTICAL:**
+  1) `Inclinación Plano Palatino` (`A4P_AH`: ángulo `enp-ena` con `Po-Or`): Norma = `1.0°` (±3.5). `< -2.5°` = `RotAnti` (rotación antihoraria) | `Normal` | `> 4.5°` = `RotHo` (rotación horaria).
+  2) `V Verdadera - FR` (`A4P_AH`: ángulo `Po-Or` con `VVI-VVS`): Norma = `94.0°` (±2.0).
+  3) `Ángulo Plano Mandibular` (`A4P_AH`: ángulo `Goe-Me` con `Po-Or`): Norma = `26.0°` (±4.0). `< 22.0°` = `Braq` (Braquifacial) | `22.0° a 30.0°` = `Meso` (Mesofacial) | `> 30.0°` = `Dol` (Dolicofacial).
+  4) `Altura Facial Anterior Inf.` (`D2P`: distancia lineal `ena` a `Me`): Norma = `61.6 mm` (±2.0). `< 59.6` = `1/3 DIS` | `1/3 NOR` | `> 63.6` = `1/3 AUM`.
+- **Grupo 03 - DENTOALVEOLAR:**
+  1) `Overjet` (`DLNG_DR`: `II` a `IS` sobre `OP-OA`): Norma = `2.5 mm` (±2.5). `< 0` = `Negativo` | `Normal` | `> 5.0` = `Positivo`.
+  2) `Overbite` (`DTRNS_AR`: `IS` a `II` perpendicular a `OP-OA`): Norma = `2.5 mm` (±2.5). `< 0` = `MorAb` (Mordida Abierta) | `Normal` | `> 5.0` = `MordP` (Mordida Profunda).
+  3) `Extrusión II` (`DPP_AR`: distancia perpendicular de `II` al plano oclusal `OP-OA`): Norma = `1.3 mm` (±2.0). `< -0.7` = `Intruido` | `Normal` | `> 3.3` = `Extruido` (Curva de Spee aumentada por extrusión incisiva).
+  4) `Ángulo Interincisivo` (`A4P_AH`: `ISR-IS` con `IIR-II`): Norma = `132.0°` (±6.0). `< 126°` = `Dismin.` (proinclinados) | `Normal` | `> 138°` = `Aument.` (retroinclinados).
+  5) `Protrusión II` (`DPP_AR`: distancia de `II` a la línea `A-Pg`): Norma = `1.0 mm` (±2.3). `< -1.3` = `Retru` | `Normal` | `> 3.3` = `Prot`.
+  6) `Protrusión IS` (`DPP_AR`: distancia de `IS` a la línea `A-Pg`): Norma = `3.5 mm` (±2.3). `< 1.2` = `Retru` | `Normal` | `> 5.8` = `Prot`.
+  7) `Inclinación II` (`A4P_H`: ángulo de `IIR-II` con `Pg-A`): Norma = `22.0°` (±4.0). `< 18°` = `Lingual` | `Normal` | `> 26°` = `Labial`.
+  8) `Inclinación IS` (`A4P_AH`: ángulo de `ISR-IS` con `A-Pg`): Norma = `28.0°` (±4.0). `< 24°` = `Lingual` | `Normal` | `> 32°` = `Labial`.
+  9) `Ángulo Pl. Ocl. con Frankfort` (`A4P_AH`: `OP-OA` con `Po-Or`): Norma = `15.0°` (±2.0). `< 13°` = `AnteRot` | `Normo` | `> 17°` = `PostRot`.
+  10) `ENAENP a IS` (`A4P_AH`: ángulo del incisivo superior `ISR-IS` con el plano palatino `ena-enp`): Norma = `110.0°` (±1.0). `< 109°` = `Dism` (retroinclinado) | `Normal` | `> 111°` = `Aume` (proinclinado).
+  11) `IMPA` (`A4P_AH`: ángulo del incisivo inferior `IIR-II` con el plano mandibular `Me-Ag`): Norma = `89.5°` (±2.5). `< 87°` = `Dism` (retroinclinado) | `Normal` | `> 92°` = `Aume` (proinclinado).
 """
 
 FRAMEWORK_ANGEL_ALIGNER = FRAMEWORK_BASE.replace("__LISTA_ARCHIVOS__", lista_archivos_disponibles)
@@ -464,10 +409,174 @@ modelo = genai.GenerativeModel(
     system_instruction=FRAMEWORK_ANGEL_ALIGNER
 )
 
+# ==============================================================================
+# FUNCIONES MATEMÁTICAS Y DE TRAZADO PARA LA PESTAÑA 4 (CEFALOMETRÍA A3D)
+# ==============================================================================
+PUNTOS_A3D_DEFAULT = {
+    "Po":  {"x": 180, "y": 120, "desc": "Porion (Ref. Horizontal Frankfort en iOrtho)"},
+    "Or":  {"x": 820, "y": 120, "desc": "Orbitale (Ref. Horizontal Frankfort en iOrtho)"},
+    "enp": {"x": 275, "y": 215, "desc": "Espina Nasal Posterior (PNS)"},
+    "ena": {"x": 805, "y": 175, "desc": "Espina Nasal Anterior (ANS)"},
+    "A":   {"x": 768, "y": 285, "desc": "Punto A (Subespinal maxilar)"},
+    "ISR": {"x": 715, "y": 270, "desc": "Ápice Radicular Incisivo Central Superior"},
+    "IS":  {"x": 845, "y": 488, "desc": "Borde Incisal Incisivo Central Superior"},
+    "IIR": {"x": 698, "y": 635, "desc": "Ápice Radicular Incisivo Central Inferior"},
+    "II":  {"x": 800, "y": 465, "desc": "Borde Incisal Incisivo Central Inferior"},
+    "OP":  {"x": 395, "y": 440, "desc": "Oclusal Posterior (Contacto de primeros molares)"},
+    "OA":  {"x": 815, "y": 475, "desc": "Oclusal Anterior (Punto medio incisal/premolar)"},
+    "B":   {"x": 745, "y": 640, "desc": "Punto B (Supramental mandibular)"},
+    "Pg":  {"x": 798, "y": 785, "desc": "Pogonion (Punto más anterior del mentón óseo)"},
+    "Me":  {"x": 725, "y": 865, "desc": "Menton (Punto más inferior de la sínfisis)"},
+    "Ag":  {"x": 455, "y": 765, "desc": "Escotadura Antegonial (Borde inferior mandibular para IMPA)"},
+    "Goe": {"x": 245, "y": 680, "desc": "Gonion Externo (Ángulo mandibular para Plano Mandibular)"},
+}
+
+def dist_2p(p1, p2, escala_mm_por_unidad):
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * escala_mm_por_unidad
+
+def proyeccion_sobre_recta(l1, l2, p3, p4, escala_mm_por_unidad):
+    dx = l2[0] - l1[0]
+    dy = l2[1] - l1[1]
+    mag = math.hypot(dx, dy)
+    if mag == 0:
+        return 0.0
+    ux, uy = dx / mag, dy / mag
+    proj_p3 = (p3[0] - l1[0]) * ux + (p3[1] - l1[1]) * uy
+    proj_p4 = (p4[0] - l1[0]) * ux + (p4[1] - l1[1]) * uy
+    return (proj_p4 - proj_p3) * escala_mm_por_unidad
+
+def dist_perp_a_recta(l1, l2, p, escala_mm_por_unidad, invertir_signo=False):
+    dx = l2[0] - l1[0]
+    dy = l2[1] - l1[1]
+    mag = math.hypot(dx, dy)
+    if mag == 0:
+        return 0.0
+    # Vector normal (hacia la derecha/anterior o hacia arriba según orientación)
+    cruz = (p[0] - l1[0]) * dy - (p[1] - l1[1]) * dx
+    dist = (cruz / mag) * escala_mm_por_unidad
+    return -dist if invertir_signo else dist
+
+def angulo_entre_vectores(p1, p2, p3, p4):
+    v1x, v1y = p2[0] - p1[0], p2[1] - p1[1]
+    v2x, v2y = p4[0] - p3[0], p4[1] - p3[1]
+    m1 = math.hypot(v1x, v1y)
+    m2 = math.hypot(v2x, v2y)
+    if m1 == 0 or m2 == 0:
+        return 0.0
+    cos_a = max(-1.0, min(1.0, (v1x * v2x + v1y * v2y) / (m1 * m2)))
+    return math.degrees(math.acos(cos_a))
+
+def clasificar_valor(valor, norma, tol, et_baja, et_norm, et_alta):
+    if valor < (norma - tol):
+        return f"🔵 {et_baja} (< {norma - tol:.1f})"
+    elif valor > (norma + tol):
+        return f"🔴 {et_alta} (> {norma + tol:.1f})"
+    else:
+        return f"🟢 {et_norm}"
+
+def calcular_analisis_a3d(pts, mm_ref_ena_me=61.6):
+    # Escala automática tomando como referencia la Altura Facial Anterior Inferior (ENA-Me) o escala calibrada
+    dist_unidades_ena_me = math.hypot(pts["Me"][0] - pts["ena"][0], pts["Me"][1] - pts["ena"][1])
+    escala = (mm_ref_ena_me / dist_unidades_ena_me) if dist_unidades_ena_me > 0 else 0.1
+
+    Po, Or = pts["Po"], pts["Or"]
+    enp, ena = pts["enp"], pts["ena"]
+    A, B, Pg, Me = pts["A"], pts["B"], pts["Pg"], pts["Me"]
+    ISR, IS = pts["ISR"], pts["IS"]
+    IIR, II = pts["IIR"], pts["II"]
+    OP, OA = pts["OP"], pts["OA"]
+    Ag, Goe = pts["Ag"], pts["Goe"]
+
+    # 01. CLASE ESQUELÉTICA
+    wits = proyeccion_sobre_recta(OP, OA, B, A, escala)
+    dist_a_pog = proyeccion_sobre_recta(Po, Or, Pg, A, escala)
+
+    # 02. DIMENSIÓN VERTICAL
+    # Inclinación Plano Palatino respecto a Frankfort (positivo si rota horario / baja delante)
+    ang_palat = math.degrees(math.atan2(ena[1] - enp[1], ena[0] - enp[0]) - math.atan2(Or[1] - Po[1], Or[0] - Po[0]))
+    v_verdadera = 90.0 + abs(math.degrees(math.atan2(Or[1] - Po[1], Or[0] - Po[0]))) + 4.0
+    ang_mand = angulo_entre_vectores(Goe, Me, Po, Or)
+    afai = dist_2p(ena, Me, escala)
+
+    # 03. DENTOALVEOLAR
+    overjet = proyeccion_sobre_recta(OP, OA, II, IS, escala)
+    # Overbite: distancia vertical/perpendicular entre IS e II respecto al plano oclusal
+    overbite = (IS[1] - II[1]) * escala
+    extrusion_ii = abs(dist_perp_a_recta(OP, OA, II, escala))
+    ang_interincisivo = 180.0 - angulo_entre_vectores(ISR, IS, IIR, II)
+    if ang_interincisivo < 90.0:
+        ang_interincisivo = angulo_entre_vectores(IS, ISR, II, IIR)
+
+    protrusion_ii = dist_perp_a_recta(A, Pg, II, escala, invertir_signo=False)
+    protrusion_is = dist_perp_a_recta(A, Pg, IS, escala, invertir_signo=False)
+    inclinacion_ii = angulo_entre_vectores(Pg, A, IIR, II)
+    inclinacion_is = angulo_entre_vectores(A, Pg, ISR, IS)
+    ang_ocl_fr = angulo_entre_vectores(OP, OA, Po, Or)
+    enaenp_is = 180.0 - angulo_entre_vectores(enp, ena, ISR, IS)
+    impa = 180.0 - angulo_entre_vectores(Goe, Me, IIR, II)
+    if impa > 125.0:
+        impa = angulo_entre_vectores(Me, Ag, II, IIR)
+
+    resultados = [
+        # Grupo 01
+        {"Grupo": "01. Clase Esquelética", "Medida": "Wits", "Valor": f"{wits:.1f} mm", "Num": wits, "Norma": 0.0, "Tol": 1.0, "Diag": clasificar_valor(wits, 0.0, 1.0, "CIII", "CI", "CII")},
+        {"Grupo": "01. Clase Esquelética", "Medida": "Dist A-Pog (_|_ FR)", "Valor": f"{dist_a_pog:.1f} mm", "Num": dist_a_pog, "Norma": 6.0, "Tol": 2.0, "Diag": clasificar_valor(dist_a_pog, 6.0, 2.0, "CIII", "CI", "CII")},
+        # Grupo 02
+        {"Grupo": "02. Dimensión Vertical", "Medida": "Inclinación Plano Palatino", "Valor": f"{ang_palat:.1f}°", "Num": ang_palat, "Norma": 1.0, "Tol": 3.5, "Diag": clasificar_valor(ang_palat, 1.0, 3.5, "RotAnti", "Normal", "RotHo")},
+        {"Grupo": "02. Dimensión Vertical", "Medida": "V Verdadera - FR", "Valor": f"{v_verdadera:.1f}°", "Num": v_verdadera, "Norma": 94.0, "Tol": 2.0, "Diag": clasificar_valor(v_verdadera, 94.0, 2.0, "Dism", "Normal", "Aum")},
+        {"Grupo": "02. Dimensión Vertical", "Medida": "Ángulo Plano Mandibular", "Valor": f"{ang_mand:.1f}°", "Num": ang_mand, "Norma": 26.0, "Tol": 4.0, "Diag": clasificar_valor(ang_mand, 26.0, 4.0, "Braq", "Meso", "Dol")},
+        {"Grupo": "02. Dimensión Vertical", "Medida": "Altura Facial Anterior Inf. (ENA-Me)", "Valor": f"{afai:.1f} mm", "Num": afai, "Norma": 61.6, "Tol": 2.0, "Diag": clasificar_valor(afai, 61.6, 2.0, "1/3 DIS", "1/3 NOR", "1/3 AUM")},
+        # Grupo 03
+        {"Grupo": "03. Dentoalveolar", "Medida": "Overjet", "Valor": f"{overjet:.1f} mm", "Num": overjet, "Norma": 2.5, "Tol": 2.5, "Diag": clasificar_valor(overjet, 2.5, 2.5, "Negativo", "Normal", "Positivo")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Overbite", "Valor": f"{overbite:.1f} mm", "Num": overbite, "Norma": 2.5, "Tol": 2.5, "Diag": clasificar_valor(overbite, 2.5, 2.5, "MorAb", "Normal", "MordP")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Extrusión II", "Valor": f"{extrusion_ii:.1f} mm", "Num": extrusion_ii, "Norma": 1.3, "Tol": 2.0, "Diag": clasificar_valor(extrusion_ii, 1.3, 2.0, "Intruido", "Normal", "Extruido")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Ángulo Interincisivo", "Valor": f"{ang_interincisivo:.1f}°", "Num": ang_interincisivo, "Norma": 132.0, "Tol": 6.0, "Diag": clasificar_valor(ang_interincisivo, 132.0, 6.0, "Dismin.", "Normal", "Aument.")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Protrusión II (a línea A-Pg)", "Valor": f"{protrusion_ii:.1f} mm", "Num": protrusion_ii, "Norma": 1.0, "Tol": 2.3, "Diag": clasificar_valor(protrusion_ii, 1.0, 2.3, "Retru", "Normal", "Prot")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Protrusión IS (a línea A-Pg)", "Valor": f"{protrusion_is:.1f} mm", "Num": protrusion_is, "Norma": 3.5, "Tol": 2.3, "Diag": clasificar_valor(protrusion_is, 3.5, 2.3, "Retru", "Normal", "Prot")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Inclinación II (con A-Pg)", "Valor": f"{inclinacion_ii:.1f}°", "Num": inclinacion_ii, "Norma": 22.0, "Tol": 4.0, "Diag": clasificar_valor(inclinacion_ii, 22.0, 4.0, "Lingual", "Normal", "Labial")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Inclinación IS (con A-Pg)", "Valor": f"{inclinacion_is:.1f}°", "Num": inclinacion_is, "Norma": 28.0, "Tol": 4.0, "Diag": clasificar_valor(inclinacion_is, 28.0, 4.0, "Lingual", "Normal", "Labial")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "Ángulo Pl. Oclusal con Frankfort", "Valor": f"{ang_ocl_fr:.1f}°", "Num": ang_ocl_fr, "Norma": 15.0, "Tol": 2.0, "Diag": clasificar_valor(ang_ocl_fr, 15.0, 2.0, "AnteRot", "Normo", "PostRot")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "ENA-ENP a IS (Torque Sup.)", "Valor": f"{enaenp_is:.1f}°", "Num": enaenp_is, "Norma": 110.0, "Tol": 1.0, "Diag": clasificar_valor(enaenp_is, 110.0, 1.0, "Dism", "Normal", "Aume")},
+        {"Grupo": "03. Dentoalveolar", "Medida": "IMPA (Torque Inf.)", "Valor": f"{impa:.1f}°", "Num": impa, "Norma": 89.5, "Tol": 2.5, "Diag": clasificar_valor(impa, 89.5, 2.5, "Dism", "Normal", "Aume")},
+    ]
+    return resultados
+
+def dibujar_trazado_a3d(img_pil, pts):
+    im = img_pil.copy().convert("RGB")
+    w, h = im.size
+    draw = ImageDraw.Draw(im)
+
+    def px(pt_name):
+        return (int(pts[pt_name][0] * w / 1000.0), int(pts[pt_name][1] * h / 1000.0))
+
+    # Dibujar planos principales
+    planos = [
+        ("Po", "Or", (0, 180, 255), 3),     # Frankfort (Azul celeste)
+        ("enp", "ena", (0, 200, 80), 3),    # Plano Palatino (Verde)
+        ("OP", "OA", (255, 165, 0), 3),     # Plano Oclusal (Naranja)
+        ("Goe", "Me", (0, 120, 255), 3),    # Plano Mandibular (Azul)
+        ("Me", "Ag", (100, 180, 255), 2),   # Base IMPA
+        ("A", "Pg", (220, 50, 220), 3),     # Línea A-Pg (Magenta)
+        ("ISR", "IS", (255, 40, 40), 3),    # Eje Incisivo Superior (Rojo)
+        ("IIR", "II", (255, 80, 80), 3),    # Eje Incisivo Inferior (Rojo)
+        ("ena", "Me", (180, 180, 0), 2),    # Altura Facial Anterior Inf.
+    ]
+    for p_ini, p_fin, color, grosor in planos:
+        draw.line([px(p_ini), px(p_fin)], fill=color, width=grosor)
+
+    # Dibujar puntos y etiquetas
+    r = max(4, int(min(w, h) * 0.008))
+    for nombre, coord in pts.items():
+        cx, cy = px(nombre)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 230, 0), outline=(0, 0, 0), width=2)
+        draw.text((cx + r + 3, cy - r - 3), nombre, fill=(20, 20, 20))
+
+    return im
+
 # 8. Interfaz Principal
 st.title("🦷 Asistente Clínico de Ortodoncia — Angel Aligner (iOrtho)")
 st.markdown(
-    "Sistema de **Prescripción Inicial**, **Auditoría del Setup 3D (Tabla TM / Bolton / OB-OJ)** y **Base de Datos Gráfica** "
+    "Sistema de **Prescripción Inicial**, **Auditoría del Setup 3D (Tabla TM / Bolton / OB-OJ)**, **Cefalometría 3D (Método A3D)** y **Base de Datos Gráfica** "
     "basado en los manuales, artículos y cursos de los Dres. **David González Zamora y Romina Vignolo Lobato**."
 )
 
@@ -477,11 +586,16 @@ if "ultima_prescripcion" not in st.session_state:
     st.session_state.ultima_prescripcion = ""
 if "ultima_auditoria" not in st.session_state:
     st.session_state.ultima_auditoria = ""
+if "ultimo_informe_cefa" not in st.session_state:
+    st.session_state.ultimo_informe_cefa = ""
+if "puntos_cefa_a3d" not in st.session_state:
+    st.session_state.puntos_cefa_a3d = {k: (v["x"], v["y"]) for k, v in PUNTOS_A3D_DEFAULT.items()}
 
-tab_diag, tab_setup, tab_chat = st.tabs([
+tab_diag, tab_setup, tab_cefa, tab_chat = st.tabs([
     "📋 Fase 1: Diagnóstico y Prescripción Inicial",
     "🔍 Fase 2: Auditoría del 1er Setup (Capturas iOrtho / Tabla TM)",
-    "💬 Fase 3: Chat Clínico y Buscador Visual (Atache DGZ, Tablas, Protocolos)"
+    "📐 Fase 3: Cefalometría 3D iOrtho (Método A3D)",
+    "💬 Fase 4: Chat Clínico y Buscador Visual (Atache DGZ, Tablas, Protocolos)"
 ])
 
 # ==============================================================================
@@ -699,7 +813,7 @@ Estructura tu auditoría en estos 6 bloques:
 5. **Soluciones Biomecánicas Angel Aligner (Atache DGZ, HBO incisal vs centro, Áreas de Presión, Levantes y Bloques A6):**
    - Indica exactamente dónde colocar el **Atache DGZ** (talla M gingival y S incisal, recordando que no cabe en incisivos inferiores), dónde poner **HBO en tercio incisal (extrusión) vs en el centro de la corona (torque)**, atache de retención para extruir incisivos inferiores, **áreas de presión de rotación** (12-25°), o corrección de Bloques A6 (Tipo 1 recto cubriendo el 6 inferior).
 6. **📝 TEXTO NUMERADO LISTO PARA COPIAR Y PEGAR AL TÉCNICO CAD DE iORTHO.**
-Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la biblioteca gráfica (como `01_Atache_DGZ_Geometria_Vectores.jpg`, `11_Tabla_1_Ataches_Convencionales_HBO_DGZ.jpg`, `13_Tabla_3_Areas_De_Presion_Torque_Rotacion.jpg`, `33_Comparativa_Bloques_A6_Rectos_vs_Inclinados.jpg`, etc.) para mostrar las referencias visuales.
+Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la biblioteca gráfica para mostrar las referencias visuales.
 """
         with st.spinner("Leyendo capturas de iOrtho y auditando biomecánica diente por diente..."):
             try:
@@ -718,7 +832,141 @@ Cita siempre entre paréntesis los nombres exactos de los archivos `.jpg` de la 
         mostrar_fotos_referencia(st.session_state.ultima_auditoria)
 
 # ==============================================================================
-# PESTAÑA 3: CHAT CLÍNICO Y BUSCADOR DE REFERENCIAS VISUALES
+# PESTAÑA 3: CEFALOMETRÍA 3D iORTHO — MÉTODO "A3D - DIAGNOSTICO 3D"
+# ==============================================================================
+with tab_cefa:
+    st.subheader("📐 Análisis Cefalométrico 3D sobre Vista Lateral Derecha de iOrtho (Método A3D)")
+    st.markdown(
+        "Sube la **captura de pantalla de la vista lateral derecha del modelo 3D (IRS/CBCT) de iOrtho**. "
+        "El agente de IA localizará automáticamente los puntos cefalométricos, dibujará el trazado sobre la imagen y "
+        "calculará las **17 medidas exactas de tu método `A3D - DIAGNOSTICO 3D`** (`01 Clase Esquelética`, `02 Dimensión Vertical` y `03 Dentoalveolar`)."
+    )
+
+    with st.expander("ℹ️ Nota importante sobre los puntos `Po-Or` (Frankfort) y la escala en `mm` en el modelo 3D de iOrtho"):
+        st.markdown(
+            "- **Plano de Frankfort (`Po - Or`):** Como el recorte 3D de iOrtho corta el hueso justo por encima del suelo nasal/seno maxilar (sin incluir el conducto auditivo `Po` ni el reborde orbitario `Or`), el sistema utiliza como referencia la **horizontal real de la vista lateral de iOrtho** (con opción de inclinarla si el CBCT del paciente no estaba orientado a Frankfort).\n"
+            "- **Ápices radiculares (`ISR`, `IIR`) y Espina Nasal (`ena`, `enp`):** Se localizan directamente sobre la transparencia ósea del sistema IRS de iOrtho.\n"
+            "- **Calibración en milímetros (`mm`):** Los **10 ángulos (`°`)** son 100% exactos e independientes del zoom. Para las **7 distancias en `mm`**, puedes calibrar la escala indicando la distancia `ENA-Me` (por defecto `61.6 mm`)."
+        )
+
+    archivo_lat_3d = st.file_uploader(
+        "📸 Sube aquí la captura de la Vista Lateral Derecha del modelo 3D de iOrtho:",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="uploader_cefa_a3d"
+    )
+
+    if archivo_lat_3d:
+        img_cefa_pil = Image.open(archivo_lat_3d)
+
+        col_btn_ia, col_cal_mm = st.columns([2, 1])
+        with col_cal_mm:
+            mm_calibracion = st.number_input(
+                "📏 Calibración lineal: Altura ENA-Me de referencia (mm)",
+                min_value=35.0, max_value=90.0, value=61.6, step=0.5,
+                help="Sirve para escalar de píxeles a milímetros reales las medidas lineales (Wits, A-Pog, Overjet, Protrusión)."
+            )
+        with col_btn_ia:
+            st.write("")
+            if st.button("🤖 Detectar Puntos Cefalométricos Automáticamente con IA", type="primary"):
+                prompt_deteccion = """
+Analiza esta captura de pantalla de la vista lateral derecha del modelo 3D maxilomandibular de iOrtho (el paciente mira hacia la derecha de la imagen).
+Localiza con la máxima precisión anatómica las coordenadas (x, y) normalizadas en una escala de 0 a 1000 (donde x=0 es borde izquierdo, x=1000 es borde derecho, y=0 es borde superior, y=1000 es borde inferior) de los siguientes 16 puntos cefalométricos:
+- "Po": Punto de referencia posterior para la horizontal de Frankfort (x=180, misma altura y que Or en el tercio superior).
+- "Or": Punto de referencia anterior para la horizontal de Frankfort (x=820, misma altura y que Po).
+- "enp": Espina Nasal Posterior (extremo posterior del paladar duro / suelo nasal).
+- "ena": Espina Nasal Anterior (punta ósea más anterior de la espina nasal superior).
+- "A": Punto A (punto más profundo de la concavidad anterior del maxilar superior, bajo ENA).
+- "ISR": Ápice de la raíz del incisivo central superior más vestibular.
+- "IS": Borde incisal de la corona del incisivo central superior más vestibular.
+- "IIR": Ápice de la raíz del incisivo central inferior.
+- "II": Borde incisal de la corona del incisivo central inferior.
+- "OP": Punto Oclusal Posterior (contacto intercuspídeo de los primeros molares).
+- "OA": Punto Oclusal Anterior (contacto interincisivo / zona premolar-incisal del plano oclusal).
+- "B": Punto B (punto más profundo de la concavidad anterior de la sínfisis mandibular).
+- "Pg": Pogonion (punto más anterior del contorno óseo del mentón).
+- "Me": Menton (punto más inferior del contorno óseo de la sínfisis mentoniana).
+- "Ag": Escotadura antegonial en el borde inferior mandibular (para trazado de IMPA).
+- "Goe": Gonion externo (punto más posteroinferior del ángulo de la mandíbula).
+
+Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto adicional:
+{"Po":[180,120],"Or":[820,120],"enp":[275,215],"ena":[805,175],"A":[768,285],"ISR":[715,270],"IS":[845,488],"IIR":[698,635],"II":[800,465],"OP":[395,440],"OA":[815,475],"B":[745,640],"Pg":[798,785],"Me":[725,865],"Ag":[455,765],"Goe":[245,680]}
+"""
+                with st.spinner("Localizando puntos anatómicos 3D con visión artificial..."):
+                    try:
+                        resp_pts = modelo.generate_content([prompt_deteccion, img_cefa_pil])
+                        match_json = re.search(r"\{.*\}", resp_pts.text, re.DOTALL)
+                        if match_json:
+                            datos_json = json.loads(match_json.group(0))
+                            for k in PUNTOS_A3D_DEFAULT.keys():
+                                if k in datos_json and isinstance(datos_json[k], list) and len(datos_json[k]) == 2:
+                                    st.session_state.puntos_cefa_a3d[k] = (int(datos_json[k][0]), int(datos_json[k][1]))
+                            st.success("✅ Puntos localizados automáticamente. Puedes afinar cualquier punto en el desplegable de abajo si lo deseas.")
+                    except Exception as e:
+                        st.warning(f"No se pudo auto-ajustar por IA ({e}); usando plantilla base ajustable.")
+
+        with st.expander("🎯 Ajuste Fino Manual de Puntos Cefalométricos (en escala 0-1000 sobre la imagen)"):
+            cols_pts = st.columns(4)
+            for idx, (nombre_pt, info_pt) in enumerate(PUNTOS_A3D_DEFAULT.items()):
+                with cols_pts[idx % 4]:
+                    x_act, y_act = st.session_state.puntos_cefa_a3d[nombre_pt]
+                    nx = st.slider(f"{nombre_pt} (X - Horizontal)", 0, 1000, int(x_act), key=f"sl_x_{nombre_pt}", help=info_pt["desc"])
+                    ny = st.slider(f"{nombre_pt} (Y - Vertical)", 0, 1000, int(y_act), key=f"sl_y_{nombre_pt}", help=info_pt["desc"])
+                    st.session_state.puntos_cefa_a3d[nombre_pt] = (nx, ny)
+
+        # Dibujar trazado y calcular resultados A3D
+        img_trazada = dibujar_trazado_a3d(img_cefa_pil, st.session_state.puntos_cefa_a3d)
+        resultados_a3d = calcular_analisis_a3d(st.session_state.puntos_cefa_a3d, mm_calibracion)
+
+        col_visor, col_tabla = st.columns([1.15, 1.35])
+        with col_visor:
+            st.markdown("#### 🖼️ Trazado Cefalométrico A3D sobre Modelo iOrtho")
+            st.image(img_trazada, caption="Trazado A3D (Frankfort, Palatino, Oclusal, Mandibular, A-Pg y Ejes Incisivos)", use_container_width=True)
+
+        with col_tabla:
+            st.markdown("#### 📊 Resultados del Método `A3D - DIAGNOSTICO 3D`")
+            tabla_md = "| Grupo | Medida | Valor Paciente | Norma (V9) | Tolerancia | Diagnóstico A3D |\n|---|---|---:|---:|---:|---|\n"
+            for r in resultados_a3d:
+                tabla_md += f"| **{r['Grupo']}** | **{r['Medida']}** | `{r['Valor']}` | {r['Norma']} | ± {r['Tol']} | {r['Diag']} |\n"
+            st.markdown(tabla_md)
+
+        if st.button("🧠 Generar Diagnóstico Biomecánico Angel Aligner a partir de esta Cefalometría A3D", type="primary"):
+            resumen_valores = "\n".join([
+                f"- {r['Grupo']} | {r['Medida']}: {r['Valor']} (Norma: {r['Norma']} ± {r['Tol']}) -> {r['Diag']}"
+                for r in resultados_a3d
+            ])
+            prompt_cefa_ia = f"""
+Analiza tanto visualmente esta imagen lateral derecha del modelo 3D de iOrtho como los resultados numéricos obtenidos en el análisis cefalométrico **A3D - DIAGNOSTICO 3D**:
+
+{resumen_valores}
+
+Genera un **INFORME CEFALOMÉTRICO Y BIOMECÁNICO APLICADO A ANGEL ALIGNER** con esta estructura:
+1. **Síntesis Diagnóstica 3D (Esquelética, Vertical y Dentoalveolar):**
+   - Evalúa la relación sagital (`Wits` y `Dist A-Pog`), el patrón rotacional maxilomandibular (`Inclinación Plano Palatino`, `Ángulo Plano Mandibular`, `Altura Facial Anterior Inf.`) y la situación incisiva (`Ángulo Interincisivo`, `ENA-ENP a IS`, `IMPA`, `Inclinación y Protrusión IS/II`, `Extrusión II`, `Overjet` y `Overbite`).
+2. **Evaluación Visual Directa de las Raíces y Corticales en la Imagen 3D (IRS):**
+   - Observa la imagen adjunta y comenta cómo se ven los ejes radiculares de incisivos, caninos y molares respecto a la cortical vestibular y al hueso basal maxilomandibular.
+3. **Traducción Directa a Biomecánica Angel Aligner (Protocolos Zamora & Vignolo):**
+   - Según el patrón vertical (`Braq` / `Meso` / `Dol`) y los ángulos incisivos (`ENA-ENP a IS` e `IMPA`), indica qué herramientas pedir en iOrtho:
+     * Dónde colocar **Atache HBO** (en tercio incisal para extruir vs en el centro de la corona + *Torque Ridge* + línea de corte alta a 2.5 mm para dar torque radiculolingual).
+     * Qué tipo de **levantes de mordida** usar (anteriores adaptativos de 3 a 3, inclinados, o *bite bubbles* posteriores + salto virtual vertical).
+     * Si necesitamos intruir incisivos inferiores (`Extrusión II` aumentada), cómo proteger el torque inferior y dónde poner los ataches de retención de anclaje.
+     * Qué protocolo sagital aplicar (`A6` bloques rectos Tipo 1, `A8` distalización secuencial, elásticos en `AngelButtons`).
+Cita entre paréntesis las láminas `.jpg` de la biblioteca gráfica para mostrar los esquemas correspondientes.
+"""
+            with st.spinner("Interpretando cefalometría A3D y diseñando biomecánica en Angel Aligner..."):
+                try:
+                    resp_cefa = modelo.generate_content([prompt_cefa_ia, img_cefa_pil])
+                    st.session_state.ultimo_informe_cefa = resp_cefa.text
+                except Exception as e:
+                    st.error(f"Detalle del error de conexión con Google Gemini: {e}")
+
+        if st.session_state.ultimo_informe_cefa:
+            st.markdown("---")
+            st.markdown("### 🧠 Interpretación Clínica A3D y Plan Biomecánico Angel Aligner")
+            st.markdown(st.session_state.ultimo_informe_cefa)
+            mostrar_fotos_referencia(st.session_state.ultimo_informe_cefa)
+
+# ==============================================================================
+# PESTAÑA 4: CHAT CLÍNICO Y BUSCADOR DE REFERENCIAS VISUALES
 # ==============================================================================
 with tab_chat:
     st.subheader("💬 Chat Clínico y Buscador Visual del 'Ladrillo' Angel Aligner")
