@@ -1,6 +1,5 @@
 streamlit
 google-generativeai
 pillow
-numpy
 pymupdf
 pillow-heif
