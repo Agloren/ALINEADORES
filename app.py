@@ -19,30 +19,46 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilo CSS para que las opciones de los desplegables (selectbox) no se corten con "..."
+# Estilo CSS para ensanchar los menús desplegables flotantes y permitir lectura completa
 st.markdown(
     """
     <style>
-    /* Permitir que el texto seleccionado y las opciones de los desplegables hagan salto de línea completo */
-    div[data-baseweb="select"] > div {
-        min-height: 42px !important;
-        height: auto !important;
-        white-space: normal !important;
+    /* Ensanchar el menú flotante (Popover) para que nunca corte las frases a la derecha */
+    div[data-baseweb="popover"] {
+        width: max-content !important;
+        min-width: 380px !important;
+        max-width: 92vw !important;
     }
+    div[data-baseweb="popover"] > div,
+    ul[data-testid="stSelectboxVirtualDropdown"],
+    div[role="listbox"] {
+        width: max-content !important;
+        min-width: 100% !important;
+        max-width: 92vw !important;
+    }
+    li[role="option"],
+    li[role="option"] > div,
+    li[role="option"] span {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        height: auto !important;
+        line-height: 1.35 !important;
+    }
+    /* Caja cerrada del selector: ajustar fuente y permitir multilínea limpia */
+    div[data-baseweb="select"] > div {
+        min-height: 40px !important;
+        height: auto !important;
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+    }
+    div[data-baseweb="select"] div,
     div[data-baseweb="select"] span {
         white-space: normal !important;
         overflow: visible !important;
         text-overflow: unset !important;
-        line-height: 1.3 !important;
-    }
-    ul[data-testid="stSelectboxVirtualDropdown"] li,
-    div[role="listbox"] li,
-    li[role="option"] {
-        white-space: normal !important;
-        height: auto !important;
-        padding-top: 8px !important;
-        padding-bottom: 8px !important;
-        line-height: 1.35 !important;
+        font-size: 0.93rem !important;
+        line-height: 1.25 !important;
     }
     </style>
     """,
@@ -527,74 +543,90 @@ modelo = genai.GenerativeModel(
     system_instruction=FRAMEWORK_ANGEL_ALIGNER
 )
 
-# 8. Diccionarios de mapeo (Etiquetas cortas y legibles en UI -> Explicación clínica completa para la IA)
+# 8. Diccionarios de mapeo (Etiquetas <= 40 caracteres para que NUNCA se corten en el menú -> Regla completa debajo y para la IA)
 MAP_PACIENTE = {
     "Adulto (Dentición permanente)": "Adulto (Dentición permanente - Hueso cortical denso)",
-    "Adolescente en crecimiento (Select / Pro)": "Adolescente en crecimiento (Select / Pro)",
-    "Adolescente tras K1 previo (Candidato a KiD K2)": "Adolescente que viene de un K1 previo - Candidato a KiD K2 (Select Unlimited)",
-    "Niño con algún diente de leche (KiD K1 - 2 años)": "Niño con algún diente de leche - Candidato a Angel KiD (K1 - 2 años)",
-    "Niño en Dentición Mixta (Pico 5-7 años / K1)": "Niño en Crecimiento - Dentición Mixta (Pico 5-7 años / C1-C2 - K1)",
-    "Niño en Dentición Temporal pura (<6 años / K1 o Pro)": "Niño Pequeño - Dentición Temporal pura (<6 años - K1 o Pro Pseudo-disyunción)",
+    "Adolescente (Select / Pro)": "Adolescente en crecimiento (Select / Pro)",
+    "Adolescente tras K1 (KiD K2)": "Adolescente que viene de un K1 previo - Candidato a KiD K2 (Select Unlimited)",
+    "Niño con diente de leche (KiD K1)": "Niño con algún diente de leche - Candidato a Angel KiD (K1 - 2 años)",
+    "Niño Dentición Mixta (5-7 años / K1)": "Niño en Crecimiento - Dentición Mixta (Pico 5-7 años / C1-C2 - K1)",
+    "Niño Dentición Temporal (<6 años)": "Niño Pequeño - Dentición Temporal pura (<6 años - K1 o Pro Pseudo-disyunción)",
 }
 
 MAP_BIOTIPO = {
     "Mesofacial": "Mesofacial",
-    "Braquifacial (Tendencia a sobremordida)": "Braquifacial (Tendencia a sobremordida / Levantes anteriores adaptativos de 3 a 3; si lleva botón directo al 6 inf. poner ataches de retención en 7 y 5)",
+    "Braquifacial (Sobremordida)": "Braquifacial (Tendencia a sobremordida / Levantes anteriores adaptativos de 3 a 3; si lleva botón directo al 6 inf. poner ataches de retención en 7 y 5)",
     "Dolicofacial / Patrón Vertical": "Dolicofacial / Vertical (Tendencia a mordida abierta / Bite bubbles posteriores para apretar + Salto virtual vertical)",
 }
 
 MAP_PERIODONTO = {
-    "Periodonto sano / Buena colaboración (Pro 7+3)": "Periodonto sano / Buena colaboración (Apto para Pro 7+3)",
-    "Adulto complejo / Hueso muy duro (Pro 7+5 días)": "Caso adulto muy complejo / hueso muy duro (Valorar Pro 7+5 días)",
-    "Paciente Periodontal / Recesiones (Usar Select, NO Pro)": "Paciente Periodontal / Recesiones (PROHIBIDO usar Pro -> usar Select Unlimited)",
-    "Con Implantes / Puentes / Molares mesioinclinados (Sin corte alto)": "Presencia de Implantes / Puentes o Molares mesioinclinados (NO usar línea de corte alta)",
-    "Gran desgaste dental (Composites inyectados CBCT+STL)": "Adulto con gran desgaste para Rehabilitación (Composites inyectados con match CBCT+STL respetando eje radicular)",
-    "Niño pequeño (Ataches 'ladrillos' / colores)": "Niño pequeño (Muerde alineadores -> Ataches 'ladrillos'/colores; NO poner en dientes de leche móviles ni en permanentes a medio salir)",
-    "Niño con autismo / hipersensibilidad (Corte alto SIN ataches)": "Niño con autismo / hipersensibilidad táctil (Línea de corte alta 2.5mm SIN ataches)",
+    "Periodonto sano (Apto Pro 7+3)": "Periodonto sano / Buena colaboración (Apto para Pro 7+3)",
+    "Adulto hueso muy duro (Pro 7+5)": "Caso adulto muy complejo / hueso muy duro (Valorar Pro 7+5 días)",
+    "Periodontal / Recesiones (Solo Select)": "Paciente Periodontal / Recesiones (PROHIBIDO usar Pro -> usar Select Unlimited)",
+    "Con Implantes / Puentes (Sin corte alto)": "Presencia de Implantes / Puentes o Molares mesioinclinados (NO usar línea de corte alta)",
+    "Gran desgaste (Composites inyectados)": "Adulto con gran desgaste para Rehabilitación (Composites inyectados con match CBCT+STL respetando eje radicular)",
+    "Niño pequeño (Ataches grandes/colores)": "Niño pequeño (Muerde alineadores -> Ataches 'ladrillos'/colores; NO poner en dientes de leche móviles ni en permanentes a medio salir)",
+    "Niño autismo / hipersensible (Sin ataches)": "Niño con autismo / hipersensibilidad táctil (Línea de corte alta 2.5mm SIN ataches)",
 }
 
 MAP_SAGITAL = {
-    "Distalización secuencial (Protocolo A8 estándar)": "Dentoalveolar (Protocolo A8: Staging 1/2, recorte distal automático del 7 y 50% salto virtual si es largo)",
-    "Distalización >= 3 mm con Microtornillos (A8 Staging 1/3)": "Distalización >= 3 mm con Microtornillos (Protocolo A8 Staging 1/3 + TAD en tuberosidad/palatino)",
-    "Clase II Subdivisión / Asimétrica (Rotar arcada inferior)": "Clase II Subdivisión / Asimétrica (Rotar arcada inferior y centrar LM inferior con la superior)",
-    "Clase II Div. 2 / Subdivisión con Sobremordida (Rampas + 4/16\" 4.5oz)": "Clase II división 2 / subdivisión con sobremordida (Rampas anteriores para desocluir y extruir posteriores compensando curva de Spee + elásticos 4/16\" 4,5 oz + expansión con control de torque + Power Ridge/Torque Ridge con atache HBO en el centro + línea de corte alta más adelante tras solucionar el apiñamiento)",
-    "Expansión Centrífuga en Dentición Mixta (Sustituto 2x4)": "Discrepancia mixta / Expansión Centrífuga (Distalar + Expandir + Protruir + 0.5mm espacio de primate en mesial y distal de caninos temporales)",
-    "Avance Mandibular en Crecimiento (A6 Bloques Tipo 1 rectos)": "Retrusión mandibular en crecimiento (Protocolo A6 Bloques Tipo 1 rectos cubriendo como mínimo el 6 inferior definitivo)",
-    "Clase II leve (<3 mm) o Fase II post-A6 (Levantes inclinados)": "Clase II con resalte < 3 mm o Fase II post-A6 (Levantes anteriores inclinados)",
-    "Clase III en crecimiento (Máscara Delaire + Dr. Reinhardt)": "Hipoplasia maxilar Clase III en crecimiento (Máscara Delaire + Corte alto 2.5mm + Técnica Dr. Reinhardt con levantes post. arriba y 6 inf. libre)",
-    "Clase III compensable en adulto (Pro 7+3 + A8 inferior)": "Clase III compensable en adulto/adolescente (Pro 7+3 + A8 inferior sin 8s + Elásticos CIII en AngelButtons)",
-    "Extracción de Premolares (Protocolo A7 + Atache DGZ)": "Caso de Extracción de Premolares (Protocolo A7 + Atache DGZ + Medio Póntico)",
-    "Preparación Cirugía Ortognática (MIC + Spee plana)": "Preparación para Cirugía Ortognática (Escaneo en MIC, Curva de Spee plana y 10 alineadores pasivos)",
+    "Distalización secuencial (A8 estándar)": "Dentoalveolar (Protocolo A8: Staging 1/2, recorte distal automático del 7 y 50% salto virtual si es largo)",
+    "Distalización >=3mm con TADs (A8 1/3)": "Distalización >= 3 mm con Microtornillos (Protocolo A8 Staging 1/3 + TAD en tuberosidad/palatino)",
+    "Clase II Subdivisión (Rotar arcada inf.)": "Clase II Subdivisión / Asimétrica (Rotar arcada inferior y centrar LM inferior con la superior)",
+    "Clase II Div.2 / Subdiv. (Rampas + 4/16\")": "Clase II división 2 / subdivisión con sobremordida (Rampas anteriores para desocluir y extruir posteriores compensando curva de Spee + elásticos 4/16\" 4,5 oz + expansión con control de torque + Power Ridge/Torque Ridge con atache HBO en el centro + línea de corte alta más adelante tras solucionar el apiñamiento)",
+    "Expansión Centrífuga Mixta (Sust. 2x4)": "Discrepancia mixta / Expansión Centrífuga (Distalar + Expandir + Protruir + 0.5mm espacio de primate en mesial y distal de caninos temporales)",
+    "Avance Mandibular (A6 Bloques Tipo 1)": "Retrusión mandibular en crecimiento (Protocolo A6 Bloques Tipo 1 rectos cubriendo como mínimo el 6 inferior definitivo)",
+    "Clase II leve <3mm / Fase II post-A6": "Clase II con resalte < 3 mm o Fase II post-A6 (Levantes anteriores inclinados)",
+    "Clase III crecimiento (Máscara Delaire)": "Hipoplasia maxilar Clase III en crecimiento (Máscara Delaire + Corte alto 2.5mm + Técnica Dr. Reinhardt con levantes post. arriba y 6 inf. libre)",
+    "Clase III compensable adulto (Pro + A8)": "Clase III compensable en adulto/adolescente (Pro 7+3 + A8 inferior sin 8s + Elásticos CIII en AngelButtons)",
+    "Extracción Premolares (A7 + Atache DGZ)": "Caso de Extracción de Premolares (Protocolo A7 + Atache DGZ + Medio Póntico)",
+    "Cirugía Ortognática (MIC + Spee plana)": "Preparación para Cirugía Ortognática (Escaneo en MIC, Curva de Spee plana y 10 alineadores pasivos)",
 }
 
 MAP_VERTICAL = {
     "Normal (1.5 - 2.5 mm)": "Normal (1.5 - 2.5 mm)",
-    "Sobremordida / Curva de Spee marcada (Rampas 3 a 3 + 4/16\" 4.5oz)": "Sobremordida aumentada / Curva de Spee marcada (Levantes curvos adaptativos de 3 a 3 sin cementar para desocluir + elásticos 4/16\" 4,5 oz; si lleva botón directo al 6 inf. en braquifacial, poner ataches de retención en 7 y 5; línea de corte alta más adelante tras solucionar apiñamiento)",
-    "Intrusión incisiva > 2.5 mm en adulto (Frog Staging 8+8)": "Intrusión incisiva > 2.5 mm en adulto (Área presión intrusión + retención en vecinos + Frog Staging 8+8)",
-    "Mordida borde a borde / Salto CIII (Levantes adaptativos)": "Mordida borde a borde / Salto de mordida CIII (Levantes anteriores adaptativos hacia incisal)",
-    "Mordida abierta en niño vertical (Bite bubbles + Salto virtual)": "Mordida abierta en niño vertical (Bite bubbles posteriores sin rellenar para apretar + Salto virtual vertical)",
-    "Mordida abierta en adulto (Sobrecorregir OB + Intrusión molar)": "Mordida abierta en adulto (Sobrecorregir OB a +3/+4mm + Intrusión molar 0.5-1mm + AngelButtons linguales)",
-    "Canteo del plano oclusal en adulto (TADs cabeza de botón)": "Canteo del plano oclusal en adulto (Levantes post. lado bajo + TADs con cabeza de botón + elásticos inf.)",
+    "Sobremordida / Spee (Rampas 3-3 + 4/16\")": "Sobremordida aumentada / Curva de Spee marcada (Levantes curvos adaptativos de 3 a 3 sin cementar para desocluir + elásticos 4/16\" 4,5 oz; si lleva botón directo al 6 inf. en braquifacial, poner ataches de retención en 7 y 5; línea de corte alta más adelante tras solucionar apiñamiento)",
+    "Intrusión >2.5mm adulto (Frog 8+8)": "Intrusión incisiva > 2.5 mm en adulto (Área presión intrusión + retención en vecinos + Frog Staging 8+8)",
+    "Borde a borde / Salto CIII (Adaptativos)": "Mordida borde a borde / Salto de mordida CIII (Levantes anteriores adaptativos hacia incisal)",
+    "Mordida abierta niño (Bite bubbles)": "Mordida abierta en niño vertical (Bite bubbles posteriores sin rellenar para apretar + Salto virtual vertical)",
+    "Mordida abierta adulto (Sobrecorregir)": "Mordida abierta en adulto (Sobrecorregir OB a +3/+4mm + Intrusión molar 0.5-1mm + AngelButtons linguales)",
+    "Canteo oclusal adulto (TADs botón)": "Canteo del plano oclusal en adulto (Levantes post. lado bajo + TADs con cabeza de botón + elásticos inf.)",
 }
 
 MAP_TRANSVERSAL = {
-    "Arcadas simétricas y bien coordinadas": "Arcadas simétricas y bien coordinadas",
-    "Compresión dentoalveolar simétrica (Arcada cuadrada)": "Compresión dentoalveolar simétrica (Expansión simétrica + ataches control torque + Arcada cuadrada)",
+    "Arcadas simétricas y coordinadas": "Arcadas simétricas y bien coordinadas",
+    "Compresión simétrica (Arcada cuadrada)": "Compresión dentoalveolar simétrica (Expansión simétrica + ataches control torque + Arcada cuadrada)",
     "Mordida cruzada UNILATERAL DERECHA": "Mordida cruzada UNILATERAL DERECHA (1º Expansión unilateral exclusiva del lado derecho comprimido -> 2º Expansión bilateral simétrica)",
     "Mordida cruzada UNILATERAL IZQUIERDA": "Mordida cruzada UNILATERAL IZQUIERDA (1º Expansión unilateral exclusiva del lado izquierdo comprimido -> 2º Expansión bilateral simétrica)",
-    "Compresión esquelética niño 5-6 años (Pseudo-disyunción Pro)": "Compresión esquelética en niño de 5-6 años (Pseudo-disyunción con Pro 5+5 días y corte alto 2.5mm sin mover dientes individuales)",
-    "Compresión esquelética <16 años (MARPE 2 micros + Leone)": "Compresión esquelética <16 años (MARPE 2 micros + 2 apoyos media banda + tornillo Leone)",
-    "Compresión esquelética 16-30 años (MARPE 4 micros + Power Screw)": "Compresión esquelética 16-30 años (MARPE 4 micros Osteogenos + 4 apoyos + Power Screw)",
-    "Compresión esquelética 30-40 años (MARPE + Corticotomía piezo)": "Compresión esquelética 30-40 años (MARPE 4 micros + Power Screw + Corticotomía piezoeléctrica de 3 incisiones perpendiculares)",
-    "Mordida en tijera / Brodie (1º Transversal -> 2º Sagital)": "Mordida en tijera / Brodie (1º Corregir primero el Brodie transversalmente -> 2º Corregir después la Clase II)",
+    "Compresión niño 5-6a (Pseudo-disyunción)": "Compresión esquelética en niño de 5-6 años (Pseudo-disyunción con Pro 5+5 días y corte alto 2.5mm sin mover dientes individuales)",
+    "Compresión <16 años (MARPE 2 micros)": "Compresión esquelética <16 años (MARPE 2 micros + 2 apoyos media banda + tornillo Leone)",
+    "Compresión 16-30 años (MARPE 4 micros)": "Compresión esquelética 16-30 años (MARPE 4 micros Osteogenos + 4 apoyos + Power Screw)",
+    "Compresión 30-40 años (MARPE + Piezo)": "Compresión esquelética 30-40 años (MARPE 4 micros + Power Screw + Corticotomía piezoeléctrica de 3 incisiones perpendiculares)",
+    "Mordida en tijera / Brodie (1º Transv.)": "Mordida en tijera / Brodie (1º Corregir primero el Brodie transversalmente -> 2º Corregir después la Clase II)",
+}
+
+MAP_ESPACIO_SUP = {
+    "Sin apiñamiento": "Sin apiñamiento",
+    "Apiñamiento leve (<=2 mm)": "Apiñamiento leve (<=2 mm)",
+    "Apiñamiento moderado (3-5 mm)": "Apiñamiento moderado (3-5 mm)",
+    "Apiñamiento severo (6-10mm - Mixta)": "Apiñamiento severo (6-10 mm - Usar línea de corte mixta)",
+    "Diastemas / Post-MARPE (Atache DGZ)": "Diastemas / Cierre post-MARPE (Atache DGZ en centrales + comprimir premolares sobreexpandidos)",
+}
+
+MAP_ESPACIO_INF = {
+    "Sin apiñamiento": "Sin apiñamiento",
+    "Apiñamiento leve (<=2 mm)": "Apiñamiento leve (<=2 mm)",
+    "Apiñamiento moderado (3-5 mm)": "Apiñamiento moderado (3-5 mm)",
+    "Apiñamiento severo (Sin corte alto)": "Apiñamiento severo / Round-tripping (NO usar línea de corte alta al inicio)",
+    "Diastemas / Espacios": "Diastemas / Espacios",
 }
 
 MAP_TORQUE = {
     "Normoinclinados": "Normoinclinados",
     "Proinclinados superior e inferior": "Proinclinados superior e inferior",
-    "Retroinclinados / Clase II Div. 2 (Rampas + Power Ridge + HBO centro)": "Retroinclinados / Clase II div 2 (Levantes anteriores para evitar interferencias, expansión con control de torque, Power Ridge / Torque Ridge con atache de extrusión HBO en el centro de la corona + línea de corte alta puesta más adelante tras solucionar el apiñamiento, o protocolo PIR si la raíz está en cortical)",
-    "Superior proinclinado / Inferior retroinclinado": "Superior proinclinado / Inferior retroinclinado",
-    "Superior retroinclinado / Inferior proinclinado (CIII)": "Superior retroinclinado / Inferior proinclinado (Compensación CIII)",
+    "Retroinclinados / CII Div.2 (HBO centro)": "Retroinclinados / Clase II div 2 (Levantes anteriores para evitar interferencias, expansión con control de torque, Power Ridge / Torque Ridge con atache de extrusión HBO en el centro de la corona + línea de corte alta puesta más adelante tras solucionar el apiñamiento, o protocolo PIR si la raíz está en cortical)",
+    "Sup. proinclinado / Inf. retroinclinado": "Superior proinclinado / Inferior retroinclinado",
+    "Sup. retroinclinado / Inf. proinclinado": "Superior retroinclinado / Inferior proinclinado (Compensación CIII)",
 }
 
 # 9. Interfaz Principal (2 Pestañas: 1. Planificación y Auditoría Unificada | 2. Chat Clínico y Buscador Visual)
@@ -620,9 +652,8 @@ tab_unificada, tab_chat = st.tabs([
 with tab_unificada:
     st.subheader("📋🔍 Estudio Clínico y Auditoría del Setup 3D en un Solo Paso")
     st.caption(
-        "Configura los parámetros clínicos del paciente y, si ya dispones de una propuesta en iOrtho, "
-        "sube también las capturas de pantalla (`Tabla TM`, `Bolton`, `Anchura de arcada`, `OB/OJ`, `MovE`). "
-        "El agente generará **una única planificación biomecánica integral y una única orden para el técnico CAD**."
+        "Configura los parámetros clínicos del paciente (debajo de cada menú verás la regla biomecánica completa desplegada) y, si ya dispones de una propuesta en iOrtho, "
+        "sube también las capturas de pantalla (`Tabla TM`, `Bolton`, `Anchura de arcada`, `OB/OJ`, `MovE`)."
     )
 
     col1, col2, col3 = st.columns(3)
@@ -631,25 +662,28 @@ with tab_unificada:
         st.markdown("#### 1. Paciente, Biotipo y Hábitos (RNO)")
         ui_paciente = st.selectbox("Grupo de edad / Dentición", list(MAP_PACIENTE.keys()))
         tipo_paciente = MAP_PACIENTE[ui_paciente]
+        st.caption(f"↳ *{tipo_paciente}*")
 
         ui_biotipo = st.selectbox("Biotipo Facial", list(MAP_BIOTIPO.keys()))
         biotipo = MAP_BIOTIPO[ui_biotipo]
+        st.caption(f"↳ *{biotipo}*")
 
         ui_periodonto = st.selectbox("Estado Periodontal, STL y Colaboración", list(MAP_PERIODONTO.keys()))
         estado_periodontal = MAP_PERIODONTO[ui_periodonto]
+        st.caption(f"↳ *{estado_periodontal}*")
 
         habitos_atm = st.multiselect(
             "Hábitos, Vía Aérea, Lengua, Sueño, Postura y ATM",
             [
                 "Sin alteraciones",
-                "Respirador oral (Test 3 min agua / ORL antes de tapes)",
-                "Restricción lingual media / Arcada en V / Lengua festoneada",
-                "Lengua baja / asimétrica torsional (Posicionador Lingual + Logopeda)",
-                "Interposición lingual / Mordida abierta (Tongue Crib / AngelButtons linguales)",
-                "Duerme boca abajo / mano bajo la cara (Almohada a los pies)",
-                "Masticación unilateral (Cambiar lado 2 años)",
-                "Envoltura de función restringida (Kois) / Desgaste incisal",
-                "Disfunción ATM / Canteo oclusal (TADs cabeza de botón)"
+                "Respirador oral (Test 3 min agua / ORL)",
+                "Restricción lingual media / Arcada en V",
+                "Lengua baja / torsional (Posic. Lingual)",
+                "Interposición lingual (Tongue Crib)",
+                "Duerme boca abajo (Almohada a los pies)",
+                "Masticación unilateral (Cambiar 2 años)",
+                "Envoltura restringida (Kois) / Bruxismo",
+                "Disfunción ATM / Canteo (TADs botón)"
             ],
             default=["Sin alteraciones"]
         )
@@ -663,6 +697,7 @@ with tab_unificada:
 
         ui_sagital = st.selectbox("Etiología y Mecánica Sagital Principal", list(MAP_SAGITAL.keys()))
         origen_sagital = MAP_SAGITAL[ui_sagital]
+        st.caption(f"↳ *{origen_sagital}*")
 
         lm_sup = st.selectbox("Línea Media Superior respecto a Facial", ["Centrada", "Desviada a la Derecha (1-2 mm)", "Desviada a la Derecha (>2 mm)", "Desviada a la Izquierda (1-2 mm)", "Desviada a la Izquierda (>2 mm)"])
         lm_inf = st.selectbox("Línea Media Inferior respecto a Superior", ["Centrada", "Desviada a la Derecha (1-2 mm)", "Desviada a la Derecha (>2 mm)", "Desviada a la Izquierda (1-2 mm)", "Desviada a la Izquierda (>2 mm)"])
@@ -671,32 +706,21 @@ with tab_unificada:
         st.markdown("#### 3. Plano Vertical, Transversal y Espacio")
         ui_vertical = st.selectbox("Situación Vertical y Curva de Spee", list(MAP_VERTICAL.keys()))
         problema_vertical = MAP_VERTICAL[ui_vertical]
+        st.caption(f"↳ *{problema_vertical}*")
 
         ui_transversal = st.selectbox("Situación Transversal", list(MAP_TRANSVERSAL.keys()))
         problema_transversal = MAP_TRANSVERSAL[ui_transversal]
+        st.caption(f"↳ *{problema_transversal}*")
 
-        apinamiento_sup = st.selectbox(
-            "Espacio Arcada Superior",
-            [
-                "Sin apiñamiento",
-                "Apiñamiento leve (<=2 mm)",
-                "Apiñamiento moderado (3-5 mm)",
-                "Apiñamiento severo (6-10 mm - Usar corte mixto)",
-                "Diastemas / Cierre post-MARPE (Atache DGZ + comprimir premolares)"
-            ]
-        )
-        apinamiento_inf = st.selectbox(
-            "Espacio Arcada Inferior",
-            [
-                "Sin apiñamiento",
-                "Apiñamiento leve (<=2 mm)",
-                "Apiñamiento moderado (3-5 mm)",
-                "Apiñamiento severo / Round-tripping (NO usar corte alto)",
-                "Diastemas / Espacios"
-            ]
-        )
+        ui_esp_sup = st.selectbox("Espacio Arcada Superior", list(MAP_ESPACIO_SUP.keys()))
+        apinamiento_sup = MAP_ESPACIO_SUP[ui_esp_sup]
+
+        ui_esp_inf = st.selectbox("Espacio Arcada Inferior", list(MAP_ESPACIO_INF.keys()))
+        apinamiento_inf = MAP_ESPACIO_INF[ui_esp_inf]
+
         ui_torque = st.selectbox("Inclinación de Incisivos (Torque inicial)", list(MAP_TORQUE.keys()))
         incisivos_inclinacion = MAP_TORQUE[ui_torque]
+        st.caption(f"↳ *{incisivos_inclinacion}*")
 
     st.markdown("---")
     st.markdown("#### 4. Capturas del Setup 3D de iOrtho (`Tabla TM`, `Bolton`, `Anchura de Arcada`, `OB/OJ`, `MovE`) y Notas del Caso")
